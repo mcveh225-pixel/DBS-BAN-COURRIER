@@ -1,0 +1,5 @@
+{
+  "name": "DBS-BAN Service Courrier",
+  "description": "Système de gestion de courrier intégré pour DBS-BAN Transport, incluant le suivi des colis et la gestion des revenus.",
+  "requestFramePermissions": []
+}

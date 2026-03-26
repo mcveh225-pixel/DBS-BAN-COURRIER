@@ -1,0 +1,73 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "Représente un utilisateur du système (Admin ou Responsable Courrier).",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string", "format": "email" },
+        "name": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "courier"] },
+        "city": { "type": "string", "description": "Ville de responsabilité pour les courriers." },
+        "password": { "type": "string", "description": "Mot de passe haché ou en clair pour la démo." },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["id", "email", "name", "role", "createdAt"]
+    },
+    "Parcel": {
+      "title": "Parcel",
+      "description": "Représente un colis enregistré dans le système.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "code": { "type": "string", "description": "Code unique du colis (ex: COL-2025-123456)." },
+        "senderName": { "type": "string" },
+        "senderPhone": { "type": "string" },
+        "recipientName": { "type": "string" },
+        "recipientPhone": { "type": "string" },
+        "destinationCity": { "type": "string" },
+        "packageType": { "type": "string" },
+        "quantity": { "type": "number", "description": "Nombre d'articles dans le colis." },
+        "value": { "type": "string" },
+        "status": { "type": "string", "enum": ["ENREGISTRE", "PAYE", "EN_TRANSIT", "ARRIVE", "LIVRE", "ANNULE"] },
+        "price": { "type": "number" },
+        "isPaid": { "type": "boolean" },
+        "paidAt": { "type": "string", "format": "date-time" },
+        "arrivedAt": { "type": "string", "format": "date-time" },
+        "deliveredAt": { "type": "string", "format": "date-time" },
+        "createdBy": { "type": "string", "description": "ID de l'utilisateur qui a créé le colis." },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "notes": { "type": "string" }
+      },
+      "required": ["id", "code", "senderName", "recipientName", "status", "price", "createdBy", "createdAt"]
+    },
+    "DailyRevenue": {
+      "title": "DailyRevenue",
+      "description": "Statistiques quotidiennes des revenus.",
+      "type": "object",
+      "properties": {
+        "date": { "type": "string", "description": "Format YYYY-MM-DD" },
+        "totalRevenue": { "type": "number" },
+        "totalParcels": { "type": "number" },
+        "paidParcels": { "type": "number" },
+        "deliveredParcels": { "type": "number" }
+      },
+      "required": ["date", "totalRevenue", "totalParcels"]
+    }
+  },
+  "firestore": {
+    "users": {
+      "schema": "User",
+      "description": "Collection des utilisateurs du système."
+    },
+    "parcels": {
+      "schema": "Parcel",
+      "description": "Collection de tous les colis."
+    },
+    "dailyRevenues": {
+      "schema": "DailyRevenue",
+      "description": "Collection des revenus quotidiens."
+    }
+  }
+}

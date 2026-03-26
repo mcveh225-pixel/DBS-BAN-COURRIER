@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>DBS-BAN Transport</title>
+    <script>
+      window.onerror = function(msg, url, line, col, error) {
+        var errorDiv = document.getElementById('error-display');
+        if (errorDiv) {
+          errorDiv.style.display = 'flex';
+          document.getElementById('error-message').textContent = msg;
+        }
+        return false;
+      };
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="error-display" style="display:none; position:fixed; top:0; left:0; width:100%; height:100%; background:#0f172a; color:white; flex-direction:column; align-items:center; justify-content:center; padding:20px; text-align:center; z-index:9999;">
+      <h2 style="font-size:1.5rem; font-weight:bold; margin-bottom:1rem;">L'application n'a pas pu charger</h2>
+      <p style="color:#94a3b8; margin-bottom:1.5rem;">Votre navigateur est peut-être trop ancien ou une erreur technique est survenue.</p>
+      <div style="background:rgba(255,255,255,0.1); padding:1rem; border-radius:0.5rem; margin-bottom:1.5rem; font-family:monospace; font-size:0.8rem; max-width:100%; overflow:auto;">
+        <code id="error-message"></code>
+      </div>
+      <button onclick="window.location.reload()" style="background:#2563eb; color:white; border:none; padding:0.75rem 1.5rem; border-radius:0.5rem; font-weight:bold; cursor:pointer;">Réessayer</button>
+    </div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+
