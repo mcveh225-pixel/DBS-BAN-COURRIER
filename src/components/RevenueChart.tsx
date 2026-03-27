@@ -17,8 +17,8 @@ export default function RevenueChart() {
 
   useEffect(() => { loadData(); }, []);
 
-  const totalRevenue = parcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
-  const totalParcels = parcels.length;
+  const totalRevenue = parcels.filter(p => p.isPaid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0);
+  const totalParcels = parcels.filter(p => p.status !== 'ANNULE').length;
   const deliveredParcels = parcels.filter(p => p.status === 'LIVRE').length;
 
   const last7Days = Array.from({ length: 7 }, (_, i) => {
@@ -28,8 +28,14 @@ export default function RevenueChart() {
   }).reverse();
 
   const revenueData = last7Days.map(date => {
-    const day = dailyRevenues.find(r => r.date === date);
-    return { date, revenue: day?.totalRevenue || 0 };
+    const dayRevenue = parcels
+      .filter(p => 
+        p.isPaid && 
+        p.status !== 'ANNULE' && 
+        p.createdAt.split('T')[0] === date
+      )
+      .reduce((sum, p) => sum + p.price, 0);
+    return { date, revenue: dayRevenue };
   });
 
   const maxRevenue = Math.max(...revenueData.map(d => d.revenue), 1);
@@ -45,6 +51,8 @@ export default function RevenueChart() {
       monday.setHours(0,0,0,0);
       const key = monday.toISOString().split('T')[0];
 
+      if (p.status === 'ANNULE') return;
+
       if (!weeks[key]) {
         weeks[key] = {
           monday,
@@ -57,7 +65,7 @@ export default function RevenueChart() {
       }
 
       weeks[key].total += 1;
-      if (p.isPaid) {
+      if (p.isPaid && p.status !== 'ANNULE') {
         weeks[key].paid += 1;
         weeks[key].revenue += p.price;
         weeks[key].tariffs[p.price] = (weeks[key].tariffs[p.price] || 0) + 1;

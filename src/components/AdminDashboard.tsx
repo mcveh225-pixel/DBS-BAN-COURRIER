@@ -43,9 +43,12 @@ export default function AdminDashboard() {
   const courierUsers = users.filter(u => u.role === 'courier');
   const totalRevenue = parcels.filter(p => p.isPaid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0);
 
-  const today = new Date().toLocaleDateString();
-  const todayParcels = parcels.filter(p => new Date(p.createdAt).toLocaleDateString() === today);
-  const todayRevenue = todayParcels.filter(p => p.isPaid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0);
+  const todayUTC = new Date().toISOString().split('T')[0];
+  const todayRevenue = parcels
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.split('T')[0] === todayUTC)
+    .reduce((sum, p) => sum + p.price, 0);
+  
+  const todayParcels = parcels.filter(p => p.createdAt.split('T')[0] === todayUTC && p.status !== 'ANNULE');
 
   // Calculate weekly stats (Week starts on Monday)
   const getStartOfWeek = () => {
@@ -54,12 +57,15 @@ export default function AdminDashboard() {
     const diff = now.getDate() - day + (day === 0 ? -6 : 1);
     const monday = new Date(now.setDate(diff));
     monday.setHours(0, 0, 0, 0);
-    return monday;
+    return monday.toISOString().split('T')[0];
   };
 
-  const startOfWeek = getStartOfWeek();
-  const weeklyParcels = parcels.filter(p => new Date(p.createdAt) >= startOfWeek);
-  const weeklyRevenue = weeklyParcels.filter(p => p.isPaid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0);
+  const startOfWeekUTC = getStartOfWeek();
+  const weeklyRevenue = parcels
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.split('T')[0] >= startOfWeekUTC)
+    .reduce((sum, p) => sum + p.price, 0);
+    
+  const weeklyParcels = parcels.filter(p => p.createdAt.split('T')[0] >= startOfWeekUTC && p.status !== 'ANNULE');
 
   const handleCreateCourier = async (email: string, name: string, city: string, password?: string) => {
     try {
@@ -234,8 +240,8 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               {courierUsers.map(user => {
                 const s = courierStats[user.id] || { revenue: 0, deliveredParcels: 0 };
-                const userWeeklyParcels = parcels.filter(p => p.createdBy === user.id && new Date(p.createdAt) >= startOfWeek);
-                const userWeeklyRevenue = userWeeklyParcels.filter(p => p.isPaid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0);
+                const userWeeklyParcels = parcels.filter(p => p.createdBy === user.id && p.createdAt.split('T')[0] >= startOfWeekUTC && p.status !== 'ANNULE');
+                const userWeeklyRevenue = userWeeklyParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
                 
                 return (
                   <div key={user.id} className="bg-white/5 rounded-lg p-4">
