@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Package, User, Phone, MapPin, FileText, DollarSign, Printer, Plus } from 'lucide-react';
 import { createParcel, getCurrentUser, Parcel } from '../lib/auth';
-import { sendBothNotifications, createParcelRegisteredMessage, logNotification } from '../lib/notifications';
+import { sendBothNotifications, createParcelRegisteredMessage, createParcelReceiptMessage, logNotification } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
 
 interface CreateParcelFormProps {
@@ -41,6 +41,18 @@ export default function CreateParcelForm({ userId, onCancel }: CreateParcelFormP
       const msg = createParcelRegisteredMessage(parcel.code, formData.senderName, getCurrentUser()?.city || 'Inconnue', Number(formData.price));
       sendBothNotifications(formData.recipientPhone, msg);
       logNotification('Notification (Enregistrement)', formData.recipientPhone, parcel.code);
+
+      // Envoi du reçu à l'expéditeur
+      const receiptMsg = createParcelReceiptMessage(
+        parcel.code, 
+        formData.recipientName, 
+        formData.destinationCity, 
+        formData.value || '0',
+        Number(formData.price), 
+        formData.isPaid
+      );
+      sendBothNotifications(formData.senderPhone, receiptMsg);
+      logNotification('Notification (Reçu Expéditeur)', formData.senderPhone, parcel.code);
 
       setMessage({ type: 'success', text: `Colis ${parcel.code} créé avec succès !`, parcel });
       setFormData({ senderName: '', senderPhone: '', recipientName: '', recipientPhone: '', destinationCity: '', packageType: '', quantity: '1', value: '', price: '', notes: '', isPaid: false });

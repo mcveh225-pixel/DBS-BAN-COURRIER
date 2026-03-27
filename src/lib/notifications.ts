@@ -90,6 +90,17 @@ export const createParcelDeliveredMessage = (parcelCode: string): string => {
   return `✅ DBS-BAN SERVICE COURRIER\nVotre colis a été livré avec succès.\n📦 Code: ${parcelCode}\n🎯 Statut: Livré\nMerci d'avoir utilisé nos services !`;
 };
 
+export const createParcelReceiptMessage = (
+  parcelCode: string,
+  recipientName: string,
+  destinationCity: string,
+  parcelValue: string,
+  price: number,
+  isPaid: boolean
+): string => {
+  return `🧾 DBS-BAN SERVICE COURRIER\nColis: ${parcelCode}\nDestinataire: ${recipientName}\nDestination: ${destinationCity}\nValeur du colis: ${parcelValue} FCFA\nMontant: ${price} FCFA\nStatut: ${isPaid ? 'PAYÉ' : 'À PAYER'}\nMerci de votre confiance !`;
+};
+
 export const logNotification = (action: string, phone: string, parcelCode: string) => {
   const timestamp = new Date().toLocaleString('fr-FR');
   const logEntry = `[${timestamp}] 📱 ${action} - Colis ${parcelCode} - Tél: ${phone}`;
