@@ -1,9 +1,15 @@
 import * as XLSX from 'xlsx';
-import { Parcel } from './auth';
+import { Parcel, User } from './auth';
 
-export const exportMonthlyReportToExcel = (parcels: Parcel[], filename?: string) => {
+export const exportMonthlyReportToExcel = (parcels: Parcel[], users: User[], filename?: string) => {
   // Group by month and station
   const groupedData: Record<string, Record<string, any>> = {};
+  
+  // Create a map of users for quick lookup
+  const userMap = users.reduce((acc, user) => {
+    acc[user.id] = user;
+    return acc;
+  }, {} as Record<string, User>);
 
   parcels.forEach(parcel => {
     const date = new Date(parcel.createdAt);
@@ -66,18 +72,24 @@ export const exportMonthlyReportToExcel = (parcels: Parcel[], filename?: string)
   XLSX.utils.book_append_sheet(wb, ws, "Bilan Mensuel");
 
   // Add a second sheet with all raw data for reference
-  const rawData = parcels.map(p => ({
-    'Code': p.code,
-    'Date': new Date(p.createdAt).toLocaleDateString('fr-FR'),
-    'Expéditeur': p.senderName,
-    'Destinataire': p.recipientName,
-    'Ville Destination': p.destinationCity,
-    'Type': p.packageType,
-    'Prix': p.price,
-    'Statut': p.status,
-    'Payé': p.isPaid ? 'Oui' : 'Non',
-    'Date Livraison': p.deliveredAt ? new Date(p.deliveredAt).toLocaleDateString('fr-FR') : '-'
-  }));
+  const rawData = parcels.map(p => {
+    const creator = userMap[p.createdBy];
+    const originCity = creator?.city || 'Inconnue';
+    
+    return {
+      'Ville Origine': originCity,
+      'Valeur Colis': p.value,
+      'Expéditeur': p.senderName,
+      'Date/Heure Expédition': new Date(p.createdAt).toLocaleString('fr-FR'),
+      'Date/Heure Livraison': p.deliveredAt ? new Date(p.deliveredAt).toLocaleString('fr-FR') : '-',
+      'Type Colis': p.packageType,
+      'Ville Destination': p.destinationCity,
+      'Destinataire': p.recipientName,
+      'Code Colis': p.code,
+      'Statut': p.status,
+      'Payé': p.isPaid ? 'Oui' : 'Non'
+    };
+  });
   const wsRaw = XLSX.utils.json_to_sheet(rawData);
   XLSX.utils.book_append_sheet(wb, wsRaw, "Détails Colis");
 
@@ -86,9 +98,15 @@ export const exportMonthlyReportToExcel = (parcels: Parcel[], filename?: string)
   XLSX.writeFile(wb, `${finalFilename}.xlsx`);
 };
 
-export const exportWeeklyReportToExcel = (parcels: Parcel[]) => {
+export const exportWeeklyReportToExcel = (parcels: Parcel[], users: User[]) => {
   // Group by week (starting Monday)
   const groupedData: Record<string, any> = {};
+  
+  // Create a map of users for quick lookup
+  const userMap = users.reduce((acc, user) => {
+    acc[user.id] = user;
+    return acc;
+  }, {} as Record<string, User>);
 
   parcels.forEach(parcel => {
     const date = new Date(parcel.createdAt);
@@ -165,30 +183,63 @@ export const exportWeeklyReportToExcel = (parcels: Parcel[]) => {
   // Add worksheet to workbook
   XLSX.utils.book_append_sheet(wb, ws, "Bilan Hebdomadaire");
 
+  // Add a second sheet with all raw data for reference
+  const rawData = parcels.map(p => {
+    const creator = userMap[p.createdBy];
+    const originCity = creator?.city || 'Inconnue';
+    
+    return {
+      'Ville Origine': originCity,
+      'Valeur Colis': p.value,
+      'Expéditeur': p.senderName,
+      'Date/Heure Expédition': new Date(p.createdAt).toLocaleString('fr-FR'),
+      'Date/Heure Livraison': p.deliveredAt ? new Date(p.deliveredAt).toLocaleString('fr-FR') : '-',
+      'Type Colis': p.packageType,
+      'Ville Destination': p.destinationCity,
+      'Destinataire': p.recipientName,
+      'Code Colis': p.code,
+      'Statut': p.status,
+      'Payé': p.isPaid ? 'Oui' : 'Non'
+    };
+  });
+  const wsRaw = XLSX.utils.json_to_sheet(rawData);
+  XLSX.utils.book_append_sheet(wb, wsRaw, "Détails Colis");
+
   // Save file
   XLSX.writeFile(wb, `Bilan_Hebdo_DBS_BAN_${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
-export const exportParcelListToExcel = (parcels: Parcel[], filename: string = 'Liste_Colis') => {
-  const data = parcels.map(p => ({
-    'Code': p.code,
-    'Date Création': new Date(p.createdAt).toLocaleDateString('fr-FR'),
-    'Expéditeur': p.senderName,
-    'Tél Expéditeur': p.senderPhone,
-    'Destinataire': p.recipientName,
-    'Tél Destinataire': p.recipientPhone,
-    'Destination': p.destinationCity,
-    'Type': p.packageType,
-    'Quantité': p.quantity,
-    'Valeur': p.value,
-    'Prix (FCFA)': p.price,
-    'Statut': p.status,
-    'Payé': p.isPaid ? 'Oui' : 'Non',
-    'Date Paiement': p.paidAt ? new Date(p.paidAt).toLocaleDateString('fr-FR') : '-',
-    'Date Arrivée': p.arrivedAt ? new Date(p.arrivedAt).toLocaleDateString('fr-FR') : '-',
-    'Date Livraison': p.deliveredAt ? new Date(p.deliveredAt).toLocaleDateString('fr-FR') : '-',
-    'Notes': p.notes || ''
-  }));
+export const exportParcelListToExcel = (parcels: Parcel[], users: User[], filename: string = 'Liste_Colis') => {
+  const userMap = users.reduce((acc, user) => {
+    acc[user.id] = user;
+    return acc;
+  }, {} as Record<string, User>);
+
+  const data = parcels.map(p => {
+    const creator = userMap[p.createdBy];
+    const originCity = creator?.city || 'Inconnue';
+
+    return {
+      'Ville Origine': originCity,
+      'Valeur Colis': p.value,
+      'Expéditeur': p.senderName,
+      'Date/Heure Expédition': new Date(p.createdAt).toLocaleString('fr-FR'),
+      'Date/Heure Livraison': p.deliveredAt ? new Date(p.deliveredAt).toLocaleString('fr-FR') : '-',
+      'Type Colis': p.packageType,
+      'Ville Destination': p.destinationCity,
+      'Destinataire': p.recipientName,
+      'Code Colis': p.code,
+      'Statut': p.status,
+      'Payé': p.isPaid ? 'Oui' : 'Non',
+      'Tél Expéditeur': p.senderPhone,
+      'Tél Destinataire': p.recipientPhone,
+      'Quantité': p.quantity,
+      'Prix (FCFA)': p.price,
+      'Date Paiement': p.paidAt ? new Date(p.paidAt).toLocaleString('fr-FR') : '-',
+      'Date Arrivée': p.arrivedAt ? new Date(p.arrivedAt).toLocaleString('fr-FR') : '-',
+      'Notes': p.notes || ''
+    };
+  });
 
   const wb = XLSX.utils.book_new();
   const ws = XLSX.utils.json_to_sheet(data);

@@ -1,16 +1,18 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, DollarSign, Package, FileDown, Calendar } from 'lucide-react';
-import { getDailyRevenues, getParcels } from '../lib/auth';
+import { getDailyRevenues, getParcels, getUsers, User } from '../lib/auth';
 import { exportWeeklyReportToExcel } from '../lib/exportUtils';
 
 export default function RevenueChart() {
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
   const [parcels, setParcels] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
 
   const loadData = async () => {
-    const [revs, parcs] = await Promise.all([getDailyRevenues(), getParcels()]);
+    const [revs, parcs, usersData] = await Promise.all([getDailyRevenues(), getParcels(), getUsers()]);
     setDailyRevenues(revs);
     setParcels(parcs);
+    setUsers(usersData);
   };
 
   useEffect(() => { loadData(); }, []);
@@ -78,7 +80,7 @@ export default function RevenueChart() {
           Analyse des Revenus
         </h2>
         <button 
-          onClick={() => exportWeeklyReportToExcel(parcels)}
+          onClick={() => exportWeeklyReportToExcel(parcels, users)}
           className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm font-medium"
         >
           <FileDown className="w-4 h-4" />

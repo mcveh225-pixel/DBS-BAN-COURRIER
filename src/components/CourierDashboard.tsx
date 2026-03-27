@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown } from 'lucide-react';
-import { User, getCourierDailyStats, getParcels } from '../lib/auth';
+import { User, getCourierDailyStats, getParcels, getUsers } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
 import ParcelList from './ParcelList';
@@ -14,15 +14,18 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const [activeTab, setActiveTab] = useState<'overview' | 'parcels' | 'create'>('overview');
   const [stats, setStats] = useState<any>(null);
   const [allParcels, setAllParcels] = useState<any[]>([]);
+  const [users, setUsers] = useState<User[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
 
   const loadData = async () => {
-    const [statsData, parcelsData] = await Promise.all([
+    const [statsData, parcelsData, usersData] = await Promise.all([
       getCourierDailyStats(user.id),
-      getParcels()
+      getParcels(),
+      getUsers()
     ]);
     setStats(statsData);
     setAllParcels(parcelsData);
+    setUsers(usersData);
   };
 
   useEffect(() => {
@@ -52,7 +55,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     const monthName = monthNames[parseInt(month) - 1];
     
-    exportMonthlyReportToExcel(filteredParcels, `Bilan_${monthName}_${year}_${user.name}`);
+    exportMonthlyReportToExcel(filteredParcels, users, `Bilan_${monthName}_${year}_${user.name}`);
   };
 
   const handleExportWeeklyExcel = () => {
@@ -60,7 +63,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       alert('Aucun colis à exporter.');
       return;
     }
-    exportWeeklyReportToExcel(allParcels);
+    exportWeeklyReportToExcel(allParcels, users);
   };
 
   const statCards = stats ? [

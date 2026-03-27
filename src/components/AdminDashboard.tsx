@@ -139,7 +139,7 @@ export default function AdminDashboard() {
     const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
     const monthName = monthNames[parseInt(month) - 1];
     
-    exportMonthlyReportToExcel(filteredParcels, `Bilan_${monthName}_${year}`);
+    exportMonthlyReportToExcel(filteredParcels, users, `Bilan_${monthName}_${year}`);
   };
 
   const handleExportWeeklyExcel = () => {
@@ -147,7 +147,7 @@ export default function AdminDashboard() {
       alert('Aucun colis à exporter.');
       return;
     }
-    exportWeeklyReportToExcel(parcels);
+    exportWeeklyReportToExcel(parcels, users);
   };
 
   const stats = [

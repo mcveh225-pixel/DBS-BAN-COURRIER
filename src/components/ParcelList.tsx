@@ -24,7 +24,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     setLoading(true);
     const [allParcels, allUsers] = await Promise.all([
       getParcels(),
-      isAdmin ? getUsers() : Promise.resolve([])
+      getUsers()
     ]);
     setParcels(allParcels);
     setFilteredParcels(allParcels);
@@ -121,7 +121,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
       alert('Aucun colis à exporter.');
       return;
     }
-    exportParcelListToExcel(filteredParcels, 'Liste_Colis_Filtres');
+    exportParcelListToExcel(filteredParcels, users, 'Liste_Colis_Filtres');
   };
 
   const today = new Date().toLocaleDateString();
