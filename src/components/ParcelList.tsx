@@ -26,8 +26,19 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
       getParcels(),
       getUsers()
     ]);
-    setParcels(allParcels);
-    setFilteredParcels(allParcels);
+    
+    const currentUser = getCurrentUser();
+    let parcelsToSet = allParcels;
+    
+    if (!isAdmin && currentUser) {
+      parcelsToSet = allParcels.filter(p => 
+        p.createdBy === currentUser.id || 
+        p.destinationCity === userCity
+      );
+    }
+
+    setParcels(parcelsToSet);
+    setFilteredParcels(parcelsToSet);
     setUsers(allUsers);
     setLoading(false);
   };
