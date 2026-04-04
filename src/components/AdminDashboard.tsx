@@ -317,6 +317,7 @@ export default function AdminDashboard() {
                   <th className="py-3 text-gray-300 font-medium">Ville</th>
                   <th className="py-3 text-gray-300 font-medium">Colis Destinés</th>
                   <th className="py-3 text-gray-300 font-medium">Revenus Aujourd'hui</th>
+                  <th className="py-3 text-gray-300 font-medium">Revenus du Mois</th>
                   <th className="py-3 text-gray-300 font-medium">Actions</th>
                 </tr>
               </thead>
@@ -344,6 +345,22 @@ export default function AdminDashboard() {
                     <td className="py-3">
                       <span className="text-green-400 font-medium">
                         {(courierStats[user.id]?.revenue || 0).toLocaleString()} FCFA
+                      </span>
+                    </td>
+                    <td className="py-3">
+                      <span className="text-purple-400 font-medium">
+                        {(() => {
+                          const currentMonth = new Date().toISOString().slice(0, 7);
+                          return parcels
+                            .filter(p => 
+                              p.createdBy === user.id && 
+                              p.isPaid && 
+                              p.status !== 'ANNULE' && 
+                              p.createdAt.startsWith(currentMonth)
+                            )
+                            .reduce((sum, p) => sum + p.price, 0)
+                            .toLocaleString();
+                        })()} FCFA
                       </span>
                     </td>
                     <td className="py-3">

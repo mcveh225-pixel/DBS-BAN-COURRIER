@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown } from 'lucide-react';
-import { User, getCourierDailyStats, getParcels, getUsers } from '../lib/auth';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar } from 'lucide-react';
+import { User, getCourierDailyStats, getParcels, getUsers, Parcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
 import ParcelList from './ParcelList';
@@ -11,7 +11,7 @@ interface CourierDashboardProps {
 }
 
 export default function CourierDashboard({ user }: CourierDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'parcels' | 'create'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'parcels' | 'create' | 'bilan'>('overview');
   const [stats, setStats] = useState<any>(null);
   const [allParcels, setAllParcels] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -35,14 +35,19 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const myParcels = allParcels.filter(p => p.createdBy === user.id);
   const parcelsForMe = allParcels.filter(p => p.destinationCity === user.city);
 
+  const currentMonth = new Date().toISOString().slice(0, 7);
+  const monthlyRevenue = myParcels
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentMonth))
+    .reduce((sum, p) => sum + p.price, 0);
+
   const handleExportExcel = () => {
-    if (allParcels.length === 0) {
+    if (myParcels.length === 0) {
       alert('Aucun colis à exporter.');
       return;
     }
     
     const [year, month] = selectedMonth.split('-');
-    const filteredParcels = allParcels.filter(p => {
+    const filteredParcels = myParcels.filter(p => {
       const date = new Date(p.createdAt);
       return date.getFullYear() === parseInt(year) && (date.getMonth() + 1) === parseInt(month);
     });
@@ -59,16 +64,17 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   };
 
   const handleExportWeeklyExcel = () => {
-    if (allParcels.length === 0) {
+    if (myParcels.length === 0) {
       alert('Aucun colis à exporter.');
       return;
     }
-    exportWeeklyReportToExcel(allParcels, users);
+    exportWeeklyReportToExcel(myParcels, users);
   };
 
   const statCards = stats ? [
     { title: 'Créés Aujourd\'hui', value: stats.totalParcels, icon: Package, color: 'bg-blue-500' },
     { title: 'Revenus Aujourd\'hui', value: `${stats.revenue.toLocaleString()} FCFA`, icon: DollarSign, color: 'bg-green-500' },
+    { title: 'Revenus du Mois', value: `${monthlyRevenue.toLocaleString()} FCFA`, icon: BarChart3, color: 'bg-purple-600' },
     { title: 'Colis Payés', value: stats.paidParcels, icon: CheckCircle, color: 'bg-purple-500' },
     { title: 'Colis Destinés', value: stats.destinedCount, icon: Package, color: 'bg-indigo-500' },
     { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-orange-500' }
@@ -81,6 +87,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           {[
             { key: 'overview', label: 'Tableau de bord', icon: Package },
             { key: 'parcels', label: 'Tous les colis', icon: Package },
+            { key: 'bilan', label: 'Mon Bilan', icon: BarChart3 },
             { key: 'create', label: 'Nouveau colis', icon: Plus }
           ].map((tab) => (
             <button
@@ -125,7 +132,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {statCards.map((stat, index) => (
           <div key={index} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
             <div className="flex items-center justify-between">
@@ -207,6 +214,165 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
 
       {activeTab === 'parcels' && <ParcelList isAdmin={false} userCity={user.city || ''} />}
       {activeTab === 'create' && <CreateParcelForm userId={user.id} onCancel={() => setActiveTab('overview')} />}
+      
+      {activeTab === 'bilan' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Bilan Hebdomadaire */}
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Calendar className="w-5 h-5 text-blue-400" />
+                  Bilan de la Semaine
+                </h3>
+                <button 
+                  onClick={handleExportWeeklyExcel}
+                  className="p-2 bg-emerald-600/20 border border-emerald-600/30 rounded-lg text-emerald-400 hover:bg-emerald-600/30 transition-colors"
+                  title="Exporter la semaine"
+                >
+                  <FileDown className="w-4 h-4" />
+                </button>
+              </div>
+              
+              {(() => {
+                const now = new Date();
+                const day = now.getDay();
+                const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+                const monday = new Date(now.setDate(diff));
+                monday.setHours(0, 0, 0, 0);
+                const mondayISO = monday.toISOString().split('T')[0];
+
+                const weekParcels = myParcels.filter(p => p.createdAt.split('T')[0] >= mondayISO && p.status !== 'ANNULE');
+                const weekRevenue = weekParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
+                const weekPaidCount = weekParcels.filter(p => p.isPaid).length;
+                const weekDelivered = weekParcels.filter(p => p.status === 'LIVRE').length;
+
+                const tariffs: Record<number, number> = {};
+                weekParcels.filter(p => p.isPaid).forEach(p => {
+                  tariffs[p.price] = (tariffs[p.price] || 0) + 1;
+                });
+
+                return (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Créés</p>
+                        <p className="text-2xl font-bold text-white mt-1">{weekParcels.length}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Revenu Hebdo</p>
+                        <p className="text-2xl font-bold text-green-400 mt-1">{weekRevenue.toLocaleString()} FCFA</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Payés</p>
+                        <p className="text-2xl font-bold text-blue-400 mt-1">{weekPaidCount}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Livrés</p>
+                        <p className="text-2xl font-bold text-orange-400 mt-1">{weekDelivered}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-300 mb-3">Détail des Tarifs (Payés)</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(tariffs).sort((a, b) => Number(a[0]) - Number(b[0])).map(([price, count]) => (
+                          <div key={price} className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg flex items-center gap-2">
+                            <span className="text-xs text-gray-400">{price} FCFA:</span>
+                            <span className="text-sm font-bold text-white">{count}</span>
+                          </div>
+                        ))}
+                        {Object.keys(tariffs).length === 0 && (
+                          <p className="text-xs text-gray-500 italic">Aucun paiement cette semaine</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Bilan Mensuel */}
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <div className="flex items-center justify-between mb-6">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <BarChart3 className="w-5 h-5 text-purple-400" />
+                  Bilan du Mois
+                </h3>
+                <div className="flex items-center gap-2">
+                  <input 
+                    type="month" 
+                    value={selectedMonth}
+                    onChange={(e) => setSelectedMonth(e.target.value)}
+                    className="bg-black/30 text-white text-xs border border-white/10 rounded-lg px-2 py-1 outline-none cursor-pointer [color-scheme:dark]"
+                  />
+                  <button 
+                    onClick={handleExportExcel}
+                    className="p-2 bg-emerald-600/20 border border-emerald-600/30 rounded-lg text-emerald-400 hover:bg-emerald-600/30 transition-colors"
+                    title="Exporter le mois"
+                  >
+                    <FileDown className="w-4 h-4" />
+                  </button>
+                </div>
+              </div>
+
+              {(() => {
+                const [year, month] = selectedMonth.split('-');
+                const monthParcels = myParcels.filter(p => {
+                  const date = new Date(p.createdAt);
+                  return date.getFullYear() === parseInt(year) && (date.getMonth() + 1) === parseInt(month) && p.status !== 'ANNULE';
+                });
+                const monthRevenue = monthParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
+                const monthPaidCount = monthParcels.filter(p => p.isPaid).length;
+                const monthDelivered = monthParcels.filter(p => p.status === 'LIVRE').length;
+
+                const tariffs: Record<number, number> = {};
+                monthParcels.filter(p => p.isPaid).forEach(p => {
+                  tariffs[p.price] = (tariffs[p.price] || 0) + 1;
+                });
+
+                return (
+                  <div className="space-y-6">
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Créés</p>
+                        <p className="text-2xl font-bold text-white mt-1">{monthParcels.length}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Revenu Mensuel</p>
+                        <p className="text-2xl font-bold text-purple-400 mt-1">{monthRevenue.toLocaleString()} FCFA</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Payés</p>
+                        <p className="text-2xl font-bold text-blue-400 mt-1">{monthPaidCount}</p>
+                      </div>
+                      <div className="bg-white/5 rounded-lg p-4 border border-white/10">
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Livrés</p>
+                        <p className="text-2xl font-bold text-orange-400 mt-1">{monthDelivered}</p>
+                      </div>
+                    </div>
+
+                    <div>
+                      <p className="text-sm font-medium text-gray-300 mb-3">Détail des Tarifs (Payés)</p>
+                      <div className="flex flex-wrap gap-2">
+                        {Object.entries(tariffs).sort((a, b) => Number(a[0]) - Number(b[0])).map(([price, count]) => (
+                          <div key={price} className="px-3 py-1.5 bg-white/5 border border-white/10 rounded-lg flex items-center gap-2">
+                            <span className="text-xs text-gray-400">{price} FCFA:</span>
+                            <span className="text-sm font-bold text-white">{count}</span>
+                          </div>
+                        ))}
+                        {Object.keys(tariffs).length === 0 && (
+                          <p className="text-xs text-gray-500 italic">Aucun paiement ce mois</p>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

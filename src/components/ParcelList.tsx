@@ -17,6 +17,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
   const [statusFilter, setStatusFilter] = useState('');
   const [courierFilter, setCourierFilter] = useState('');
   const [dateFilter, setDateFilter] = useState<boolean>(false);
+  const [arrivalDateFilter, setArrivalDateFilter] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -63,8 +64,11 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     if (dateFilter) {
       filtered = filtered.filter(p => new Date(p.createdAt).toLocaleDateString() === today);
     }
+    if (arrivalDateFilter) {
+      filtered = filtered.filter(p => p.arrivedAt && p.arrivedAt.split('T')[0] === arrivalDateFilter);
+    }
     setFilteredParcels(filtered);
-  }, [parcels, searchTerm, statusFilter, courierFilter, dateFilter]);
+  }, [parcels, searchTerm, statusFilter, courierFilter, dateFilter, arrivalDateFilter]);
 
   const currentUser = getCurrentUser();
 
@@ -197,6 +201,17 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
               <option value="ARRIVE">Arrivé</option>
               <option value="LIVRE">Livré</option>
             </select>
+          </div>
+
+          <div className="w-full md:w-48 relative">
+            <Calendar className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-gray-400" />
+            <input 
+              type="date" 
+              value={arrivalDateFilter} 
+              onChange={(e) => setArrivalDateFilter(e.target.value)} 
+              className="w-full pl-10 pr-4 py-3 bg-white/10 border border-white/20 rounded-lg text-white focus:outline-none [color-scheme:dark]"
+              title="Filtrer par date d'arrivée"
+            />
           </div>
 
           <button 

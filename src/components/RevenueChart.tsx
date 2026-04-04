@@ -1,12 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { TrendingUp, DollarSign, Package, FileDown, Calendar } from 'lucide-react';
-import { getDailyRevenues, getParcels, getUsers, User } from '../lib/auth';
+import { TrendingUp, DollarSign, Package, FileDown, Calendar, User as UserIcon, BarChart3 } from 'lucide-react';
+import { getDailyRevenues, getParcels, getUsers, User, Parcel } from '../lib/auth';
 import { exportWeeklyReportToExcel } from '../lib/exportUtils';
 
 export default function RevenueChart() {
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
-  const [parcels, setParcels] = useState<any[]>([]);
+  const [parcels, setParcels] = useState<Parcel[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
 
   const loadData = async () => {
     const [revs, parcs, usersData] = await Promise.all([getDailyRevenues(), getParcels(), getUsers()]);
@@ -80,6 +81,54 @@ export default function RevenueChart() {
 
   const weeklyData = getWeeklyBreakdown();
 
+  const getCourierPerformance = () => {
+    const couriers = users.filter(u => u.role === 'courier');
+    
+    // Current week start
+    const now = new Date();
+    const day = now.getDay();
+    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
+    const monday = new Date(now.setDate(diff));
+    monday.setHours(0, 0, 0, 0);
+    const currentWeekStart = monday.toISOString().split('T')[0];
+
+    // Selected month
+    const [year, month] = selectedMonth.split('-');
+
+    return couriers.map(courier => {
+      const courierParcels = parcels.filter(p => p.createdBy === courier.id && p.status !== 'ANNULE');
+      
+      // Weekly stats
+      const weekParcels = courierParcels.filter(p => p.createdAt.split('T')[0] >= currentWeekStart);
+      const weekRevenue = weekParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
+      
+      // Monthly stats
+      const monthParcels = courierParcels.filter(p => {
+        const date = new Date(p.createdAt);
+        return date.getFullYear() === parseInt(year) && (date.getMonth() + 1) === parseInt(month);
+      });
+      const monthRevenue = monthParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
+
+      return {
+        id: courier.id,
+        name: courier.name,
+        city: courier.city,
+        week: {
+          revenue: weekRevenue,
+          parcels: weekParcels.length,
+          paid: weekParcels.filter(p => p.isPaid).length
+        },
+        month: {
+          revenue: monthRevenue,
+          parcels: monthParcels.length,
+          paid: monthParcels.filter(p => p.isPaid).length
+        }
+      };
+    });
+  };
+
+  const courierPerformance = getCourierPerformance();
+
   return (
     <div className="space-y-6">
       <div className="flex justify-between items-center">
@@ -130,6 +179,68 @@ export default function RevenueChart() {
               </div>
             </div>
           ))}
+        </div>
+      </div>
+
+      <div className="bg-white/10 border border-white/20 rounded-xl p-6">
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
+          <div className="flex items-center gap-2">
+            <UserIcon className="w-5 h-5 text-blue-400" />
+            <h3 className="text-lg font-semibold text-white">Performance par Responsable</h3>
+          </div>
+          <div className="flex items-center gap-3 bg-black/30 rounded-lg px-3 py-2 border border-white/10">
+            <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Mois</span>
+            <input 
+              type="month" 
+              value={selectedMonth}
+              onChange={(e) => setSelectedMonth(e.target.value)}
+              className="bg-transparent text-white text-sm outline-none cursor-pointer [color-scheme:dark]"
+            />
+          </div>
+        </div>
+
+        <div className="overflow-x-auto">
+          <table className="w-full text-left text-sm">
+            <thead>
+              <tr className="border-b border-white/10">
+                <th className="py-3 text-gray-400 font-medium">Responsable</th>
+                <th className="py-3 text-gray-400 font-medium">Ville</th>
+                <th className="py-3 text-gray-400 font-medium text-center border-l border-white/5">Colis (Sem)</th>
+                <th className="py-3 text-gray-400 font-medium text-right text-green-400">Revenu (Sem)</th>
+                <th className="py-3 text-gray-400 font-medium text-center border-l border-white/5">Colis (Mois)</th>
+                <th className="py-3 text-gray-400 font-medium text-right text-purple-400">Revenu (Mois)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {courierPerformance.map((perf) => (
+                <tr key={perf.id} className="border-b border-white/5 hover:bg-white/5 transition-colors">
+                  <td className="py-4">
+                    <p className="text-white font-medium">{perf.name}</p>
+                  </td>
+                  <td className="py-4 text-gray-400">{perf.city || '-'}</td>
+                  <td className="py-4 text-center text-gray-300 border-l border-white/5">
+                    {perf.week.parcels} <span className="text-[10px] text-gray-500">({perf.week.paid} payés)</span>
+                  </td>
+                  <td className="py-4 text-right text-green-400 font-bold">
+                    {perf.week.revenue.toLocaleString()} FCFA
+                  </td>
+                  <td className="py-4 text-center text-gray-300 border-l border-white/5">
+                    {perf.month.parcels} <span className="text-[10px] text-gray-500">({perf.month.paid} payés)</span>
+                  </td>
+                  <td className="py-4 text-right text-purple-400 font-bold">
+                    {perf.month.revenue.toLocaleString()} FCFA
+                  </td>
+                </tr>
+              ))}
+              {courierPerformance.length === 0 && (
+                <tr>
+                  <td colSpan={6} className="py-8 text-center text-gray-500 italic">
+                    Aucun responsable trouvé
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
