@@ -5,6 +5,7 @@ import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
 import ParcelList from './ParcelList';
 import CreateParcelForm from './CreateParcelForm';
+import ParcelDetailsModal from './ParcelDetailsModal';
 
 interface CourierDashboardProps {
   user: User;
@@ -16,6 +17,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const [allParcels, setAllParcels] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [detailsModal, setDetailsModal] = useState<{ isOpen: boolean; title: string; parcels: Parcel[] }>({
+    isOpen: false,
+    title: '',
+    parcels: []
+  });
 
   const loadData = async () => {
     const [statsData, parcelsData, usersData] = await Promise.all([
@@ -36,6 +42,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const parcelsForMe = allParcels.filter(p => p.destinationCity === user.city);
 
   const currentMonth = new Date().toISOString().slice(0, 7);
+  const todayISO = new Date().toISOString().split('T')[0];
+  
+  const todayMyParcels = myParcels.filter(p => p.createdAt.startsWith(todayISO) && p.status !== 'ANNULE');
+  const destinedParcels = allParcels.filter(p => p.destinationCity === user.city && !['LIVRE', 'ANNULE'].includes(p.status));
+
   const monthlyRevenue = myParcels
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentMonth))
     .reduce((sum, p) => sum + p.price, 0);
@@ -72,11 +83,23 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   };
 
   const statCards = stats ? [
-    { title: 'Créés Aujourd\'hui', value: stats.totalParcels, icon: Package, color: 'bg-blue-500' },
+    { 
+      title: 'Créés Aujourd\'hui', 
+      value: stats.totalParcels, 
+      icon: Package, 
+      color: 'bg-blue-500',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Colis Créés Aujourd\'hui', parcels: todayMyParcels })
+    },
     { title: 'Revenus Aujourd\'hui', value: `${stats.revenue.toLocaleString()} FCFA`, icon: DollarSign, color: 'bg-green-500' },
     { title: 'Revenus du Mois', value: `${monthlyRevenue.toLocaleString()} FCFA`, icon: BarChart3, color: 'bg-purple-600' },
     { title: 'Colis Payés', value: stats.paidParcels, icon: CheckCircle, color: 'bg-purple-500' },
-    { title: 'Colis Destinés', value: stats.destinedCount, icon: Package, color: 'bg-indigo-500' },
+    { 
+      title: 'Colis Destinés', 
+      value: stats.destinedCount, 
+      icon: Package, 
+      color: 'bg-indigo-500',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Colis Destinés à ' + user.city, parcels: destinedParcels })
+    },
     { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-orange-500' }
   ] : [];
 
@@ -134,7 +157,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {statCards.map((stat, index) => (
-          <div key={index} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+          <div 
+            key={index} 
+            onClick={stat.onClick}
+            className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 ${stat.onClick ? 'cursor-pointer hover:bg-white/20 hover:border-white/30 transition-all transform hover:-translate-y-1' : ''}`}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-300 text-sm">{stat.title}</p>
@@ -144,6 +171,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                 <stat.icon className="w-6 h-6 text-white" />
               </div>
             </div>
+            {stat.onClick && (
+              <p className="text-[10px] text-blue-400 mt-2 font-medium flex items-center gap-1">
+                Cliquer pour voir les détails
+              </p>
+            )}
           </div>
         ))}
       </div>
@@ -372,6 +404,13 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             </div>
           </div>
         </div>
+      )}
+      {detailsModal.isOpen && (
+        <ParcelDetailsModal 
+          title={detailsModal.title}
+          parcels={detailsModal.parcels}
+          onClose={() => setDetailsModal({ ...detailsModal, isOpen: false })}
+        />
       )}
     </div>
   );

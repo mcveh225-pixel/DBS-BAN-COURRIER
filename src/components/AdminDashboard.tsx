@@ -6,6 +6,7 @@ import CreateCourierModal from './CreateCourierModal';
 import CreateAdminModal from './CreateAdminModal';
 import ParcelList from './ParcelList';
 import RevenueChart from './RevenueChart';
+import AdminBreakdownModal from './AdminBreakdownModal';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
@@ -16,6 +17,17 @@ export default function AdminDashboard() {
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
   const [courierStats, setCourierStats] = useState<Record<string, any>>({});
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [breakdownModal, setBreakdownModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    type: 'responsables' | 'parcels_today' | 'parcels_week' | 'revenue_today' | 'revenue_week' | 'revenue_month';
+    data: any[];
+  }>({
+    isOpen: false,
+    title: '',
+    type: 'responsables',
+    data: []
+  });
   const currentUser = getCurrentUser();
 
   const loadData = async () => {
@@ -61,6 +73,12 @@ export default function AdminDashboard() {
   };
 
   const startOfWeekUTC = getStartOfWeek();
+  const currentMonthUTC = new Date().toISOString().slice(0, 7);
+
+  const monthlyRevenue = parcels
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentMonthUTC))
+    .reduce((sum, p) => sum + p.price, 0);
+
   const weeklyRevenue = parcels
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.split('T')[0] >= startOfWeekUTC)
     .reduce((sum, p) => sum + p.price, 0);
@@ -157,11 +175,128 @@ export default function AdminDashboard() {
   };
 
   const stats = [
-    { title: 'Responsables', value: courierUsers.length, icon: Users, color: 'bg-blue-500' },
-    { title: 'Colis Aujourd\'hui', value: todayParcels.length, icon: Package, color: 'bg-emerald-500' },
-    { title: 'Colis de la Semaine', value: weeklyParcels.length, icon: Package, color: 'bg-indigo-500' },
-    { title: 'Revenus Aujourd\'hui', value: `${todayRevenue.toLocaleString()} FCFA`, icon: TrendingUp, color: 'bg-orange-500' },
-    { title: 'Revenus Semaine', value: `${weeklyRevenue.toLocaleString()} FCFA`, icon: DollarSign, color: 'bg-blue-600' },
+    { 
+      title: 'Responsables', 
+      value: courierUsers.length, 
+      icon: Users, 
+      color: 'bg-blue-500',
+      onClick: () => setBreakdownModal({
+        isOpen: true,
+        title: 'Liste des Responsables',
+        type: 'responsables',
+        data: courierUsers.map(u => ({
+          name: u.name,
+          city: u.city,
+          value: u.email
+        }))
+      })
+    },
+    { 
+      title: 'Colis Aujourd\'hui', 
+      value: todayParcels.length, 
+      icon: Package, 
+      color: 'bg-emerald-500',
+      onClick: () => setBreakdownModal({
+        isOpen: true,
+        title: 'Colis par Responsable (Aujourd\'hui)',
+        type: 'parcels_today',
+        data: courierUsers.map(u => {
+          const count = todayParcels.filter(p => p.createdBy === u.id).length;
+          return {
+            name: u.name,
+            city: u.city,
+            value: `${count} colis`
+          };
+        }).filter(d => parseInt(d.value) > 0)
+      })
+    },
+    { 
+      title: 'Colis de la Semaine', 
+      value: weeklyParcels.length, 
+      icon: Package, 
+      color: 'bg-indigo-500',
+      onClick: () => setBreakdownModal({
+        isOpen: true,
+        title: 'Colis par Responsable (Semaine)',
+        type: 'parcels_week',
+        data: courierUsers.map(u => {
+          const count = weeklyParcels.filter(p => p.createdBy === u.id).length;
+          return {
+            name: u.name,
+            city: u.city,
+            value: `${count} colis`
+          };
+        }).filter(d => parseInt(d.value) > 0)
+      })
+    },
+    { 
+      title: 'Revenus Aujourd\'hui', 
+      value: `${todayRevenue.toLocaleString()} FCFA`, 
+      icon: TrendingUp, 
+      color: 'bg-orange-500',
+      onClick: () => setBreakdownModal({
+        isOpen: true,
+        title: 'Revenus par Responsable (Aujourd\'hui)',
+        type: 'revenue_today',
+        data: courierUsers.map(u => {
+          const userTodayParcels = todayParcels.filter(p => p.createdBy === u.id && p.isPaid);
+          const revenue = userTodayParcels.reduce((sum, p) => sum + p.price, 0);
+          return {
+            name: u.name,
+            city: u.city,
+            value: revenue,
+            subValue: userTodayParcels.length
+          };
+        }).filter(d => (d.value as number) > 0)
+      })
+    },
+    { 
+      title: 'Revenus Semaine', 
+      value: `${weeklyRevenue.toLocaleString()} FCFA`, 
+      icon: DollarSign, 
+      color: 'bg-blue-600',
+      onClick: () => setBreakdownModal({
+        isOpen: true,
+        title: 'Revenus par Responsable (Semaine)',
+        type: 'revenue_week',
+        data: courierUsers.map(u => {
+          const userWeeklyParcels = weeklyParcels.filter(p => p.createdBy === u.id && p.isPaid);
+          const revenue = userWeeklyParcels.reduce((sum, p) => sum + p.price, 0);
+          return {
+            name: u.name,
+            city: u.city,
+            value: revenue,
+            subValue: userWeeklyParcels.length
+          };
+        }).filter(d => (d.value as number) > 0)
+      })
+    },
+    { 
+      title: 'Revenus du Mois', 
+      value: `${monthlyRevenue.toLocaleString()} FCFA`, 
+      icon: DollarSign, 
+      color: 'bg-pink-600',
+      onClick: () => setBreakdownModal({
+        isOpen: true,
+        title: 'Revenus par Responsable (Mois)',
+        type: 'revenue_month',
+        data: courierUsers.map(u => {
+          const userMonthlyParcels = parcels.filter(p => 
+            p.createdBy === u.id && 
+            p.isPaid && 
+            p.status !== 'ANNULE' && 
+            p.createdAt.startsWith(currentMonthUTC)
+          );
+          const revenue = userMonthlyParcels.reduce((sum, p) => sum + p.price, 0);
+          return {
+            name: u.name,
+            city: u.city,
+            value: revenue,
+            subValue: userMonthlyParcels.length
+          };
+        }).filter(d => (d.value as number) > 0)
+      })
+    },
     { title: 'Revenus Total', value: `${totalRevenue.toLocaleString()} FCFA`, icon: DollarSign, color: 'bg-purple-500' }
   ];
 
@@ -217,16 +352,20 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
         {stats.map((stat, index) => (
-          <div key={index} className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+          <div 
+            key={index} 
+            className={`bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6 transition-all ${stat.onClick ? 'cursor-pointer hover:bg-white/20 hover:scale-[1.02] active:scale-[0.98]' : ''}`}
+            onClick={stat.onClick}
+          >
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-gray-300 text-sm">{stat.title}</p>
-                <p className="text-2xl font-bold text-white mt-1">{stat.value}</p>
+                <p className="text-xl font-bold text-white mt-1">{stat.value}</p>
               </div>
               <div className={`${stat.color} rounded-lg p-3`}>
-                <stat.icon className="w-6 h-6 text-white" />
+                <stat.icon className="w-5 h-5 text-white" />
               </div>
             </div>
           </div>
@@ -390,6 +529,15 @@ export default function AdminDashboard() {
 
       {showCreateModal && <CreateCourierModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateCourier} />}
       {showCreateAdminModal && <CreateAdminModal onClose={() => setShowCreateAdminModal(false)} onCreate={handleCreateAdmin} />}
+      
+      {breakdownModal.isOpen && (
+        <AdminBreakdownModal 
+          title={breakdownModal.title}
+          type={breakdownModal.type}
+          data={breakdownModal.data}
+          onClose={() => setBreakdownModal(prev => ({ ...prev, isOpen: false }))}
+        />
+      )}
     </div>
   );
 }
