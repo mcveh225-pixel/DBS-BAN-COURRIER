@@ -41,6 +41,30 @@ export interface DailyRevenue {
   deliveredParcels: number;
 }
 
+export const getDisplayStatus = (status: Parcel['status']) => {
+  switch (status) {
+    case 'ENREGISTRE': return 'ENREGISTRÉ';
+    case 'PAYE': return 'ENREGISTRÉ';
+    case 'EN_TRANSIT': return 'EN TRANSIT';
+    case 'ARRIVE': return 'ARRIVÉ';
+    case 'LIVRE': return 'LIVRÉ';
+    case 'ANNULE': return 'ANNULÉ';
+    default: return status;
+  }
+};
+
+export const getStatusColor = (status: Parcel['status']) => {
+  switch (status) {
+    case 'ENREGISTRE': return 'bg-gray-600';
+    case 'PAYE': return 'bg-blue-600';
+    case 'EN_TRANSIT': return 'bg-indigo-600';
+    case 'ARRIVE': return 'bg-orange-600';
+    case 'LIVRE': return 'bg-green-600';
+    case 'ANNULE': return 'bg-red-600';
+    default: return 'bg-gray-600';
+  }
+};
+
 const LOCAL_STORAGE_KEYS = {
   CURRENT_USER: 'dbs_ban_current_user'
 };
@@ -325,6 +349,7 @@ export const archiveParcel = async (parcelId: string): Promise<boolean> => {
       .from('parcels')
       .update({ status: 'ANNULE' })
       .eq('id', parcelId);
+    
     return !error;
   } catch (error) {
     console.error('Erreur lors de l\'archivage du colis:', error);
@@ -459,6 +484,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
       .single();
 
     if (error) throw error;
+
     return mapParcel(data);
   } catch (error) {
     console.error('Erreur lors de la mise à jour du colis:', error);

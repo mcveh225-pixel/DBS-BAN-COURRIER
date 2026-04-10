@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar } from 'lucide-react';
-import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User } from '../lib/auth';
-import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification } from '../lib/notifications';
+import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare } from 'lucide-react';
+import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor } from '../lib/auth';
+import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, sendSMS, createManualSMSMessage } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
 import { exportParcelListToExcel } from '../lib/exportUtils';
 
@@ -34,7 +34,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     if (!isAdmin && currentUser) {
       parcelsToSet = allParcels.filter(p => 
         p.createdBy === currentUser.id || 
-        p.destinationCity === userCity
+        (p.destinationCity === userCity && ['EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status))
       );
     }
 
@@ -112,24 +112,21 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     }
   };
 
-  const isDestinationCourier = (parcel: Parcel) => parcel.destinationCity === userCity;
-
-  const getStatusColor = (status: string) => {
-    switch (status) {
-      case 'ENREGISTRE': return 'bg-gray-600';
-      case 'PAYE': return 'bg-blue-600';
-      case 'EN_TRANSIT': return 'bg-indigo-600';
-      case 'ARRIVE': return 'bg-orange-600';
-      case 'LIVRE': return 'bg-green-600';
-      default: return 'bg-gray-600';
+  const handleSendManualSMS = async (parcel: Parcel) => {
+    const message = createManualSMSMessage(
+      parcel.code, 
+      getDisplayStatus(parcel.status), 
+      parcel.destinationCity,
+      parcel.senderName,
+      parcel.recipientName
+    );
+    const success = await sendSMS(parcel.recipientPhone, message);
+    if (success) {
+      logNotification('SMS Manuel', parcel.recipientPhone, parcel.code);
     }
   };
 
-  const getDisplayStatus = (status: string) => {
-    if (status === 'PAYE') return 'ENREGISTRE';
-    if (status === 'EN_TRANSIT') return 'EXPÉDIÉ';
-    return status;
-  };
+  const isDestinationCourier = (parcel: Parcel) => parcel.destinationCity === userCity;
 
   const handleExport = () => {
     if (filteredParcels.length === 0) {
@@ -268,6 +265,15 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
                     {!parcel.isPaid && parcel.createdBy === currentUser?.id && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CreditCard className="w-3 h-3" /> Payer</button>}
                     {parcel.isPaid && parcel.status === 'PAYE' && parcel.createdBy === currentUser?.id && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Send className="w-3 h-3" /> Expédier</button>}
                     {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
+                    {parcel.status !== 'LIVRE' && (
+                      <button 
+                        onClick={() => handleSendManualSMS(parcel)} 
+                        className="bg-blue-500 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-blue-600 transition-colors"
+                        title="Envoyer SMS au destinataire"
+                      >
+                        <MessageSquare className="w-3 h-3" /> SMS
+                      </button>
+                    )}
                     {isDestinationCourier(parcel) && parcel.status === 'EN_TRANSIT' && <button onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')} className="bg-orange-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Truck className="w-3 h-3" /> Arrivé</button>}
                     {isDestinationCourier(parcel) && parcel.status === 'ARRIVE' && <button onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')} className="bg-green-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Livrer</button>}
                     {(isAdmin || (parcel.createdBy === currentUser?.id && parcel.status === 'ENREGISTRE')) && parcel.status !== 'ANNULE' && parcel.status !== 'LIVRE' && !parcel.isPaid && (

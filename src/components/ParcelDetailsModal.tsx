@@ -1,6 +1,6 @@
 import React from 'react';
 import { X, Package, Printer } from 'lucide-react';
-import { Parcel } from '../lib/auth';
+import { Parcel, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 
 interface ParcelDetailsModalProps {
@@ -49,13 +49,8 @@ export default function ParcelDetailsModal({ title, parcels, onClose }: ParcelDe
                       </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${
-                        parcel.status === 'LIVRE' ? 'bg-green-600 text-white' :
-                        parcel.status === 'ARRIVE' ? 'bg-orange-600 text-white' :
-                        parcel.status === 'EN_TRANSIT' ? 'bg-indigo-600 text-white' :
-                        'bg-gray-600 text-white'
-                      }`}>
-                        {parcel.status}
+                      <span className={`px-2 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${getStatusColor(parcel.status)}`}>
+                        {getDisplayStatus(parcel.status)}
                       </span>
                       <p className="text-green-400 font-bold">{parcel.price.toLocaleString()} FCFA</p>
                       {parcel.isPaid && (

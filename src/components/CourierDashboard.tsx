@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar } from 'lucide-react';
-import { User, getCourierDailyStats, getParcels, getUsers, Parcel } from '../lib/auth';
+import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
 import ParcelList from './ParcelList';
@@ -194,12 +194,8 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                       <p className="text-sm text-gray-300">{parcel.recipientName}</p>
                     </div>
                     <div className="text-right flex flex-col items-end gap-2">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        parcel.status === 'LIVRE' ? 'bg-green-600 text-white' :
-                        parcel.status === 'ARRIVE' ? 'bg-yellow-600 text-white' :
-                        'bg-gray-600 text-white'
-                      }`}>
-                        {parcel.status}
+                      <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                        {getDisplayStatus(parcel.status)}
                       </span>
                       {parcel.isPaid && (
                         <button 
@@ -228,12 +224,8 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                       <p className="text-sm text-gray-300">{parcel.recipientName}</p>
                     </div>
                     <div className="flex flex-col items-end gap-2">
-                      <span className={`px-2 py-1 rounded-full text-xs ${
-                        parcel.status === 'LIVRE' ? 'bg-green-600 text-white' :
-                        parcel.status === 'ARRIVE' ? 'bg-yellow-600 text-white' :
-                        'bg-gray-600 text-white'
-                      }`}>
-                        {parcel.status}
+                      <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                        {getDisplayStatus(parcel.status)}
                       </span>
                     </div>
                   </div>

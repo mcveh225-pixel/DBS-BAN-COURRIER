@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown } from 'lucide-react';
-import { getUsers, getParcels, createCourierUser, createAdminUser, deleteUser, archiveUser, getDailyRevenues, getCourierDailyStats, getCurrentUser } from '../lib/auth';
+import { getUsers, getParcels, createCourierUser, createAdminUser, deleteUser, archiveUser, getDailyRevenues, getCourierDailyStats, getCurrentUser, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
 import CreateCourierModal from './CreateCourierModal';
 import CreateAdminModal from './CreateAdminModal';
@@ -418,12 +418,8 @@ export default function AdminDashboard() {
                       <p className="text-white font-medium">{parcel.code}</p>
                       <p className="text-sm text-gray-300">{parcel.destinationCity}</p>
                     </div>
-                    <span className={`px-2 py-1 rounded-full text-xs ${
-                      parcel.status === 'LIVRE' ? 'bg-green-600 text-white' :
-                      parcel.status === 'ARRIVE' ? 'bg-yellow-600 text-white' :
-                      'bg-gray-600 text-white'
-                    }`}>
-                      {parcel.status}
+                    <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                      {getDisplayStatus(parcel.status)}
                     </span>
                   </div>
                 </div>

@@ -1,4 +1,47 @@
-// Service de notifications SMS et WhatsApp (Simulation)
+// Service de notifications SMS Orange et WhatsApp
+
+const ORANGE_CLIENT_ID = import.meta.env.VITE_ORANGE_CLIENT_ID;
+const ORANGE_CLIENT_SECRET = import.meta.env.VITE_ORANGE_CLIENT_SECRET;
+const ORANGE_SENDER_NUMBER = import.meta.env.VITE_ORANGE_SENDER_NUMBER;
+
+// Cache pour le token Orange
+let orangeAccessToken: string | null = null;
+let tokenExpiry: number = 0;
+
+// Fonction pour obtenir le token d'accès Orange
+const getOrangeAccessToken = async (): Promise<string | null> => {
+  if (orangeAccessToken && Date.now() < tokenExpiry) {
+    return orangeAccessToken;
+  }
+
+  if (!ORANGE_CLIENT_ID || !ORANGE_CLIENT_SECRET) {
+    console.warn('Orange API credentials missing. SMS will be simulated.');
+    return null;
+  }
+
+  try {
+    const auth = btoa(`${ORANGE_CLIENT_ID}:${ORANGE_CLIENT_SECRET}`);
+    const response = await fetch('https://api.orange.com/oauth/v2/token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: 'grant_type=client_credentials'
+    });
+
+    const data = await response.json();
+    if (data.access_token) {
+      orangeAccessToken = data.access_token;
+      tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000; // Expire 1 min avant
+      return orangeAccessToken;
+    }
+    return null;
+  } catch (error) {
+    console.error('Error getting Orange token:', error);
+    return null;
+  }
+};
 
 // Fonction pour formater le numéro de téléphone
 const formatPhoneNumber = (phone: string): string => {
@@ -37,13 +80,50 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info') =
 export const sendSMS = async (phone: string, message: string): Promise<boolean> => {
   try {
     const formattedPhone = formatPhoneNumber(phone);
-    console.log(`📱 SMS envoyé à ${formattedPhone}:`, message);
-    await new Promise<void>(resolve => setTimeout(resolve, 500));
-    showNotification(`SMS envoyé à ${formattedPhone}`, 'success');
-    return true;
+    const token = await getOrangeAccessToken();
+
+    if (!token || !ORANGE_SENDER_NUMBER) {
+      // Fallback simulation si pas de config
+      console.log(`📱 [SIMULATION] SMS envoyé à ${formattedPhone}:`, message);
+      await new Promise<void>(resolve => setTimeout(resolve, 500));
+      showNotification(`SMS simulé pour ${formattedPhone}`, 'info');
+      return true;
+    }
+
+    // Envoi réel via Orange
+    const senderAddress = `tel:${ORANGE_SENDER_NUMBER}`;
+    const receiverAddress = `tel:${formattedPhone}`;
+
+    const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${encodeURIComponent(senderAddress)}/requests`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        outboundSMSMessageRequest: {
+          address: receiverAddress,
+          senderAddress: senderAddress,
+          outboundSMSTextMessage: {
+            message: message
+          }
+        }
+      })
+    });
+
+    if (response.ok) {
+      console.log(`📱 SMS Orange envoyé à ${formattedPhone}`);
+      showNotification(`SMS envoyé à ${formattedPhone}`, 'success');
+      return true;
+    } else {
+      const errorData = await response.json();
+      console.error('Orange API Error:', errorData);
+      showNotification('Erreur API Orange SMS', 'error');
+      return false;
+    }
   } catch (error) {
     console.error('Erreur envoi SMS:', error);
-    showNotification('Erreur lors de l\'envoi du SMS', 'error');
+    showNotification('Erreur réseau lors de l\'envoi du SMS', 'error');
     return false;
   }
 };
@@ -79,7 +159,7 @@ export const createParcelRegisteredMessage = (
   senderCity: string,
   price: number
 ): string => {
-  return `🚚 DBS-BAN SERVICE COURRIER\nBojnjour,\n${senderName}\nvous à expédié un colis dépuis\n${senderCity}\n${parcelCode}\nconservé le code pour le rétrait. DBS-BAN vous rémercie pour votre confiance`;
+  return `🚚 DBS-BAN SERVICE COURRIER\nBonjour,\n${senderName}\nvous a expédié un colis depuis\n${senderCity}\n${parcelCode}\nConservez le code pour le retrait. DBS-BAN vous remercie pour votre confiance`;
 };
 
 export const createParcelArrivedMessage = (parcelCode: string): string => {
@@ -99,6 +179,16 @@ export const createParcelReceiptMessage = (
   isPaid: boolean
 ): string => {
   return `🧾 DBS-BAN SERVICE COURRIER\nColis: ${parcelCode}\nDestinataire: ${recipientName}\nDestination: ${destinationCity}\nValeur du colis: ${parcelValue} FCFA\nMontant: ${price} FCFA\nStatut: ${isPaid ? 'PAYÉ' : 'À PAYER'}\nMerci de votre confiance !`;
+};
+
+export const createManualSMSMessage = (
+  parcelCode: string, 
+  status: string, 
+  destination: string,
+  senderName: string,
+  recipientName: string
+): string => {
+  return `📦 DBS-BAN SERVICE COURRIER\ninfo expéditeur: ${senderName}\nInfo Colis: ${parcelCode}\nStatut: ${status}\nDestination: ${destination}\ninfo destinataire: ${recipientName}\nMerci de votre confiance !`;
 };
 
 export const logNotification = (action: string, phone: string, parcelCode: string) => {
