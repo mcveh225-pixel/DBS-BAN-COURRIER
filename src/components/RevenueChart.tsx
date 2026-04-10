@@ -1,13 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, DollarSign, Package, FileDown, Calendar, User as UserIcon, BarChart3 } from 'lucide-react';
-import { getDailyRevenues, getParcels, getUsers, User, Parcel } from '../lib/auth';
+import { getDailyRevenues, getParcels, getUsers, User, Parcel, getCurrentUser } from '../lib/auth';
 import { exportWeeklyReportToExcel } from '../lib/exportUtils';
+import AdminBreakdownModal from './AdminBreakdownModal';
 
 export default function RevenueChart() {
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7));
+  const [breakdownModal, setBreakdownModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    type: 'responsables' | 'parcels_today' | 'parcels_week' | 'revenue_today' | 'revenue_week' | 'revenue_month';
+    data: any[];
+  }>({
+    isOpen: false,
+    title: '',
+    type: 'responsables',
+    data: []
+  });
 
   const loadData = async () => {
     const [revs, parcs, usersData] = await Promise.all([getDailyRevenues(), getParcels(), getUsers()]);
@@ -18,7 +30,10 @@ export default function RevenueChart() {
 
   useEffect(() => { loadData(); }, []);
 
-  const totalRevenue = parcels.filter(p => p.isPaid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0);
+  const currentYearUTC = new Date().toISOString().slice(0, 4);
+  const totalRevenue = parcels
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentYearUTC))
+    .reduce((sum, p) => sum + p.price, 0);
   const totalParcels = parcels.filter(p => p.status !== 'ANNULE').length;
   const deliveredParcels = parcels.filter(p => p.status === 'LIVRE').length;
 
@@ -146,8 +161,33 @@ export default function RevenueChart() {
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-white/10 border border-white/20 rounded-xl p-6 flex justify-between items-center">
-          <div><p className="text-gray-300 text-sm">Revenus Total</p><p className="text-2xl font-bold text-white">{totalRevenue.toLocaleString()} FCFA</p></div>
+        <div 
+          className="bg-white/10 border border-white/20 rounded-xl p-6 flex justify-between items-center cursor-pointer hover:bg-white/20 transition-all hover:scale-[1.02] active:scale-[0.98]"
+          onClick={() => {
+            const courierUsers = users.filter(u => u.role === 'courier');
+            setBreakdownModal({
+              isOpen: true,
+              title: 'Revenus par Responsable (Année)',
+              type: 'revenue_month',
+              data: courierUsers.map(u => {
+                const userYearlyParcels = parcels.filter(p => 
+                  p.createdBy === u.id && 
+                  p.isPaid && 
+                  p.status !== 'ANNULE' && 
+                  p.createdAt.startsWith(currentYearUTC)
+                );
+                const revenue = userYearlyParcels.reduce((sum, p) => sum + p.price, 0);
+                return {
+                  name: u.name,
+                  city: u.city,
+                  value: revenue,
+                  subValue: userYearlyParcels.length
+                };
+              }).filter(d => (d.value as number) > 0)
+            });
+          }}
+        >
+          <div><p className="text-gray-300 text-sm">Revenus de l'Année</p><p className="text-2xl font-bold text-white">{totalRevenue.toLocaleString()} FCFA</p></div>
           <DollarSign className="w-8 h-8 text-green-500" />
         </div>
         <div className="bg-white/10 border border-white/20 rounded-xl p-6 flex justify-between items-center">
@@ -285,6 +325,15 @@ export default function RevenueChart() {
           </table>
         </div>
       </div>
+
+      {breakdownModal.isOpen && (
+        <AdminBreakdownModal
+          title={breakdownModal.title}
+          type={breakdownModal.type}
+          data={breakdownModal.data}
+          onClose={() => setBreakdownModal({ ...breakdownModal, isOpen: false })}
+        />
+      )}
     </div>
   );
 }

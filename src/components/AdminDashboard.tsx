@@ -53,7 +53,6 @@ export default function AdminDashboard() {
   }, []);
 
   const courierUsers = users.filter(u => u.role === 'courier');
-  const totalRevenue = parcels.filter(p => p.isPaid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0);
 
   const todayUTC = new Date().toISOString().split('T')[0];
   const todayRevenue = parcels
@@ -74,9 +73,14 @@ export default function AdminDashboard() {
 
   const startOfWeekUTC = getStartOfWeek();
   const currentMonthUTC = new Date().toISOString().slice(0, 7);
+  const currentYearUTC = new Date().toISOString().slice(0, 4);
 
   const monthlyRevenue = parcels
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentMonthUTC))
+    .reduce((sum, p) => sum + p.price, 0);
+
+  const totalRevenue = parcels
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentYearUTC))
     .reduce((sum, p) => sum + p.price, 0);
 
   const weeklyRevenue = parcels
@@ -297,7 +301,32 @@ export default function AdminDashboard() {
         }).filter(d => (d.value as number) > 0)
       })
     },
-    { title: 'Revenus Total', value: `${totalRevenue.toLocaleString()} FCFA`, icon: DollarSign, color: 'bg-purple-500' }
+    { 
+      title: 'Revenus de l\'Année', 
+      value: `${totalRevenue.toLocaleString()} FCFA`, 
+      icon: DollarSign, 
+      color: 'bg-purple-500',
+      onClick: () => setBreakdownModal({
+        isOpen: true,
+        title: 'Revenus par Responsable (Année)',
+        type: 'revenue_month', // We can reuse this type or add a new one, but revenue_month logic in modal is generic enough
+        data: courierUsers.map(u => {
+          const userYearlyParcels = parcels.filter(p => 
+            p.createdBy === u.id && 
+            p.isPaid && 
+            p.status !== 'ANNULE' && 
+            p.createdAt.startsWith(currentYearUTC)
+          );
+          const revenue = userYearlyParcels.reduce((sum, p) => sum + p.price, 0);
+          return {
+            name: u.name,
+            city: u.city,
+            value: revenue,
+            subValue: userYearlyParcels.length
+          };
+        }).filter(d => (d.value as number) > 0)
+      })
+    }
   ];
 
   return (
