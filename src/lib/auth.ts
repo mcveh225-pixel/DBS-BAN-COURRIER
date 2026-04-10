@@ -457,6 +457,18 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     if (updates.paidAt) dbUpdates.paid_at = updates.paidAt;
     if (updates.arrivedAt) dbUpdates.arrived_at = updates.arrivedAt;
     if (updates.deliveredAt) dbUpdates.delivered_at = updates.deliveredAt;
+    
+    // Support for editing other fields
+    if (updates.senderName) dbUpdates.sender_name = updates.senderName;
+    if (updates.senderPhone) dbUpdates.sender_phone = updates.senderPhone;
+    if (updates.recipientName) dbUpdates.recipient_name = updates.recipientName;
+    if (updates.recipientPhone) dbUpdates.recipient_phone = updates.recipientPhone;
+    if (updates.destinationCity) dbUpdates.destination_city = updates.destinationCity;
+    if (updates.packageType) dbUpdates.package_type = updates.packageType;
+    if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
+    if (updates.value !== undefined) dbUpdates.value = updates.value;
+    if (updates.price !== undefined) dbUpdates.price = updates.price;
+    if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
     // Handle revenue update if marking as paid
     if (updates.isPaid) {

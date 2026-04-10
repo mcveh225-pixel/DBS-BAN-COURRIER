@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar } from 'lucide-react';
-import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor } from '../lib/auth';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X } from 'lucide-react';
+import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
 import ParcelList from './ParcelList';
@@ -17,6 +17,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const [allParcels, setAllParcels] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
   const [detailsModal, setDetailsModal] = useState<{ isOpen: boolean; title: string; parcels: Parcel[] }>({
     isOpen: false,
     title: '',
@@ -80,6 +81,22 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       return;
     }
     exportWeeklyReportToExcel(myParcels, users);
+  };
+
+  const handleArchiveParcel = async (parcelId: string, parcelCode: string) => {
+    if (confirm(`Voulez-vous vraiment annuler le colis ${parcelCode} ?`)) {
+      const success = await archiveParcel(parcelId);
+      if (success) {
+        loadData();
+      } else {
+        alert('Erreur lors de l\'annulation du colis.');
+      }
+    }
+  };
+
+  const handleEditSuccess = () => {
+    loadData();
+    setEditingParcel(null);
   };
 
   const statCards = stats ? [
@@ -204,6 +221,22 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                         >
                           <Printer className="w-3 h-3" /> Reçu
                         </button>
+                      )}
+                      {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                        <div className="flex gap-2">
+                          <button 
+                            onClick={() => setEditingParcel(parcel)}
+                            className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-xs"
+                          >
+                            <Edit className="w-3 h-3" /> Modifier
+                          </button>
+                          <button 
+                            onClick={() => handleArchiveParcel(parcel.id, parcel.code)}
+                            className="text-red-400 hover:text-red-300 flex items-center gap-1 text-xs"
+                          >
+                            <Archive className="w-3 h-3" /> Annuler
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -403,6 +436,27 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           parcels={detailsModal.parcels}
           onClose={() => setDetailsModal({ ...detailsModal, isOpen: false })}
         />
+      )}
+
+      {editingParcel && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="w-full max-w-4xl my-8">
+            <div className="relative">
+              <button 
+                onClick={() => setEditingParcel(null)}
+                className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <CreateParcelForm 
+                userId={user.id} 
+                parcel={editingParcel} 
+                onCancel={() => setEditingParcel(null)}
+                onSuccess={handleEditSuccess}
+              />
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

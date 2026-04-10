@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare } from 'lucide-react';
+import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X } from 'lucide-react';
 import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, sendSMS, createManualSMSMessage } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
 import { exportParcelListToExcel } from '../lib/exportUtils';
+import CreateParcelForm from './CreateParcelForm';
 
 interface ParcelListProps {
   isAdmin: boolean;
@@ -20,6 +21,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
   const [arrivalDateFilter, setArrivalDateFilter] = useState('');
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -102,14 +104,19 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
   };
 
   const handleArchiveParcel = async (parcelId: string, parcelCode: string) => {
-    if (confirm(`Voulez-vous vraiment archiver (annuler) le colis ${parcelCode} ?`)) {
+    if (confirm(`Voulez-vous vraiment annuler le colis ${parcelCode} ?`)) {
       const success = await archiveParcel(parcelId);
       if (success) {
         setParcels(prev => prev.map(p => p.id === parcelId ? { ...p, status: 'ANNULE' } : p));
       } else {
-        alert('Erreur lors de l\'archivage du colis.');
+        alert('Erreur lors de l\'annulation du colis.');
       }
     }
+  };
+
+  const handleEditSuccess = (updatedParcel: Parcel) => {
+    setParcels(prev => prev.map(p => p.id === updatedParcel.id ? updatedParcel : p));
+    setEditingParcel(null);
   };
 
   const handleSendManualSMS = async (parcel: Parcel) => {
@@ -265,7 +272,25 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
                     {!parcel.isPaid && parcel.createdBy === currentUser?.id && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CreditCard className="w-3 h-3" /> Payer</button>}
                     {parcel.isPaid && parcel.status === 'PAYE' && parcel.createdBy === currentUser?.id && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Send className="w-3 h-3" /> Expédier</button>}
                     {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
-                    {parcel.status !== 'LIVRE' && (
+                    
+                    {parcel.createdBy === currentUser?.id && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                      <>
+                        <button 
+                          onClick={() => setEditingParcel(parcel)} 
+                          className="bg-amber-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-amber-700 transition-colors"
+                        >
+                          <Edit className="w-3 h-3" /> Modifier
+                        </button>
+                        <button 
+                          onClick={() => handleArchiveParcel(parcel.id, parcel.code)} 
+                          className="bg-red-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-red-700 transition-colors"
+                        >
+                          <Archive className="w-3 h-3" /> Annuler
+                        </button>
+                      </>
+                    )}
+
+                    {parcel.status !== 'LIVRE' && parcel.status !== 'ANNULE' && (
                       <button 
                         onClick={() => handleSendManualSMS(parcel)} 
                         className="bg-blue-500 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-blue-600 transition-colors"
@@ -276,11 +301,6 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
                     )}
                     {isDestinationCourier(parcel) && parcel.status === 'EN_TRANSIT' && <button onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')} className="bg-orange-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Truck className="w-3 h-3" /> Arrivé</button>}
                     {isDestinationCourier(parcel) && parcel.status === 'ARRIVE' && <button onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')} className="bg-green-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Livrer</button>}
-                    {(isAdmin || (parcel.createdBy === currentUser?.id && parcel.status === 'ENREGISTRE')) && parcel.status !== 'ANNULE' && parcel.status !== 'LIVRE' && !parcel.isPaid && (
-                      <button onClick={() => handleArchiveParcel(parcel.id, parcel.code)} className="bg-red-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1">
-                        <Archive className="w-3 h-3" /> Archiver
-                      </button>
-                    )}
                   </div>
                 </td>
               </tr>
@@ -288,6 +308,27 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
           </tbody>
         </table>
       </div>
+
+      {editingParcel && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
+          <div className="w-full max-w-4xl my-8">
+            <div className="relative">
+              <button 
+                onClick={() => setEditingParcel(null)}
+                className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
+              >
+                <X className="w-6 h-6" />
+              </button>
+              <CreateParcelForm 
+                userId={currentUser?.id || ''} 
+                parcel={editingParcel} 
+                onCancel={() => setEditingParcel(null)}
+                onSuccess={handleEditSuccess}
+              />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

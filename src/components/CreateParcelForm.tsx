@@ -1,12 +1,14 @@
 import React, { useState } from 'react';
 import { Package, User, Phone, MapPin, FileText, DollarSign, Printer, Plus } from 'lucide-react';
-import { createParcel, getCurrentUser, Parcel } from '../lib/auth';
+import { createParcel, updateParcel, getCurrentUser, Parcel } from '../lib/auth';
 import { sendBothNotifications, createParcelRegisteredMessage, createParcelReceiptMessage, logNotification } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
 
 interface CreateParcelFormProps {
   userId: string;
   onCancel?: () => void;
+  parcel?: Parcel;
+  onSuccess?: (parcel: Parcel) => void;
 }
 
 const cities = [
@@ -14,11 +16,19 @@ const cities = [
   'Bin-Houyé', 'Touba', 'Facobly', 'Biankouma', 'Bangolo', 'Duékoué'
 ];
 
-export default function CreateParcelForm({ userId, onCancel }: CreateParcelFormProps) {
+export default function CreateParcelForm({ userId, onCancel, parcel, onSuccess }: CreateParcelFormProps) {
   const [formData, setFormData] = useState({
-    senderName: '', senderPhone: '', recipientName: '', recipientPhone: '',
-    destinationCity: '', packageType: '', quantity: '1', value: '', price: '', notes: '',
-    isPaid: false
+    senderName: parcel?.senderName || '', 
+    senderPhone: parcel?.senderPhone || '', 
+    recipientName: parcel?.recipientName || '', 
+    recipientPhone: parcel?.recipientPhone || '',
+    destinationCity: parcel?.destinationCity || '', 
+    packageType: parcel?.packageType || '', 
+    quantity: parcel?.quantity.toString() || '1', 
+    value: parcel?.value || '', 
+    price: parcel?.price.toString() || '', 
+    notes: parcel?.notes || '',
+    isPaid: parcel?.isPaid || false
   });
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [message, setMessage] = useState<{ type: string; text: string; parcel?: Parcel }>({ type: '', text: '' });
@@ -29,38 +39,64 @@ export default function CreateParcelForm({ userId, onCancel }: CreateParcelFormP
     setMessage({ type: '', text: '' });
 
     try {
-      const parcel = await createParcel({
-        senderName: formData.senderName, senderPhone: formData.senderPhone,
-        recipientName: formData.recipientName, recipientPhone: formData.recipientPhone,
-        destinationCity: formData.destinationCity, packageType: formData.packageType,
-        quantity: Number(formData.quantity),
-        value: formData.value, price: Number(formData.price),
-        status: formData.isPaid ? 'PAYE' : 'ENREGISTRE', isPaid: formData.isPaid, createdBy: userId, notes: formData.notes
-      });
+      if (parcel) {
+        // Update existing parcel
+        const updatedParcel = await updateParcel(parcel.id, {
+          senderName: formData.senderName,
+          senderPhone: formData.senderPhone,
+          recipientName: formData.recipientName,
+          recipientPhone: formData.recipientPhone,
+          destinationCity: formData.destinationCity,
+          packageType: formData.packageType,
+          quantity: Number(formData.quantity),
+          value: formData.value,
+          price: Number(formData.price),
+          notes: formData.notes,
+          isPaid: formData.isPaid
+        });
 
-      const msg = createParcelRegisteredMessage(parcel.code, formData.senderName, getCurrentUser()?.city || 'Inconnue', Number(formData.price));
-      sendBothNotifications(formData.recipientPhone, msg);
-      logNotification('Notification (Enregistrement)', formData.recipientPhone, parcel.code);
+        if (updatedParcel) {
+          setMessage({ type: 'success', text: `Colis ${updatedParcel.code} mis à jour avec succès !`, parcel: updatedParcel });
+          if (onSuccess) onSuccess(updatedParcel);
+        } else {
+          throw new Error('Erreur lors de la mise à jour');
+        }
+      } else {
+        // Create new parcel
+        const newParcel = await createParcel({
+          senderName: formData.senderName, senderPhone: formData.senderPhone,
+          recipientName: formData.recipientName, recipientPhone: formData.recipientPhone,
+          destinationCity: formData.destinationCity, packageType: formData.packageType,
+          quantity: Number(formData.quantity),
+          value: formData.value, price: Number(formData.price),
+          status: formData.isPaid ? 'PAYE' : 'ENREGISTRE', isPaid: formData.isPaid, createdBy: userId, notes: formData.notes
+        });
 
-      // Envoi du reçu à l'expéditeur
-      const receiptMsg = createParcelReceiptMessage(
-        parcel.code, 
-        formData.recipientName, 
-        formData.destinationCity, 
-        formData.value || '0',
-        Number(formData.price), 
-        formData.isPaid
-      );
-      sendBothNotifications(formData.senderPhone, receiptMsg);
-      logNotification('Notification (Reçu Expéditeur)', formData.senderPhone, parcel.code);
+        const msg = createParcelRegisteredMessage(newParcel.code, formData.senderName, getCurrentUser()?.city || 'Inconnue', Number(formData.price));
+        sendBothNotifications(formData.recipientPhone, msg);
+        logNotification('Notification (Enregistrement)', formData.recipientPhone, newParcel.code);
 
-      setMessage({ type: 'success', text: `Colis ${parcel.code} créé avec succès !`, parcel });
-      setFormData({ senderName: '', senderPhone: '', recipientName: '', recipientPhone: '', destinationCity: '', packageType: '', quantity: '1', value: '', price: '', notes: '', isPaid: false });
+        // Envoi du reçu à l'expéditeur
+        const receiptMsg = createParcelReceiptMessage(
+          newParcel.code, 
+          formData.recipientName, 
+          formData.destinationCity, 
+          formData.value || '0',
+          Number(formData.price), 
+          formData.isPaid
+        );
+        sendBothNotifications(formData.senderPhone, receiptMsg);
+        logNotification('Notification (Reçu Expéditeur)', formData.senderPhone, newParcel.code);
+
+        setMessage({ type: 'success', text: `Colis ${newParcel.code} créé avec succès !`, parcel: newParcel });
+        setFormData({ senderName: '', senderPhone: '', recipientName: '', recipientPhone: '', destinationCity: '', packageType: '', quantity: '1', value: '', price: '', notes: '', isPaid: false });
+        if (onSuccess) onSuccess(newParcel);
+      }
     } catch (error: any) {
-      console.error('Erreur détaillée de création:', error);
+      console.error('Erreur détaillée:', error);
       setMessage({ 
         type: 'error', 
-        text: `Erreur lors de la création du colis: ${error.message || 'Problème de base de données'}` 
+        text: `Erreur: ${error.message || 'Problème de base de données'}` 
       });
     } finally { setIsSubmitting(false); }
   };
@@ -74,7 +110,7 @@ export default function CreateParcelForm({ userId, onCancel }: CreateParcelFormP
     <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
       <div className="flex items-center gap-3 mb-6">
         <Package className="w-6 h-6 text-blue-400" />
-        <h3 className="text-xl font-semibold text-white">Créer un nouveau colis</h3>
+        <h3 className="text-xl font-semibold text-white">{parcel ? 'Modifier le colis' : 'Créer un nouveau colis'}</h3>
       </div>
       {message.text && (
         <div className={`mb-6 p-4 rounded-lg border flex justify-between items-center ${message.type === 'success' ? 'bg-green-500/10 border-green-500/20 text-green-300' : 'bg-red-500/10 border-red-500/20 text-red-300'}`}>
@@ -179,7 +215,7 @@ export default function CreateParcelForm({ userId, onCancel }: CreateParcelFormP
         </div>
         <div className="flex flex-col sm:flex-row gap-4">
           <button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
-            {isSubmitting ? 'Création...' : <><Package className="w-5 h-5" /> Créer le colis</>}
+            {isSubmitting ? (parcel ? 'Mise à jour...' : 'Création...') : <><Package className="w-5 h-5" /> {parcel ? 'Mettre à jour' : 'Créer le colis'}</>}
           </button>
           {onCancel && (
             <button 
