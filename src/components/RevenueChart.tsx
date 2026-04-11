@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { TrendingUp, DollarSign, Package, FileDown, Calendar, User as UserIcon, BarChart3 } from 'lucide-react';
 import { getDailyRevenues, getParcels, getUsers, User, Parcel, getCurrentUser } from '../lib/auth';
-import { exportWeeklyReportToExcel } from '../lib/exportUtils';
+import { exportTenDayReportToExcel } from '../lib/exportUtils';
 import AdminBreakdownModal from './AdminBreakdownModal';
 
 export default function RevenueChart() {
@@ -56,71 +56,112 @@ export default function RevenueChart() {
 
   const maxRevenue = Math.max(...revenueData.map(d => d.revenue), 1);
 
-  // Weekly breakdown logic
-  const getWeeklyBreakdown = () => {
-    const weeks: Record<string, any> = {};
+  // 10-day period breakdown logic
+  const getTenDayBreakdown = () => {
+    const periods: Record<string, any> = {};
     parcels.forEach(p => {
-      const date = new Date(p.createdAt);
-      const day = date.getDay();
-      const diff = date.getDate() - day + (day === 0 ? -6 : 1);
-      const monday = new Date(date.setDate(diff));
-      monday.setHours(0,0,0,0);
-      const key = monday.toISOString().split('T')[0];
-
       if (p.status === 'ANNULE') return;
+      
+      const date = new Date(p.createdAt);
+      const day = date.getDate();
+      const year = date.getFullYear();
+      const month = date.getMonth();
 
-      if (!weeks[key]) {
-        weeks[key] = {
-          monday,
+      let startDay, endDay;
+      if (day <= 10) {
+        startDay = 1;
+        endDay = 10;
+      } else if (day <= 20) {
+        startDay = 11;
+        endDay = 20;
+      } else {
+        startDay = 21;
+        endDay = new Date(year, month + 1, 0).getDate();
+      }
+
+      const key = `${year}-${month + 1}-${startDay}`;
+
+      if (!periods[key]) {
+        periods[key] = {
+          label: `du ${startDay} au ${endDay} ${date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`,
+          startDate: new Date(year, month, startDay),
           total: 0,
           paid: 0,
           revenue: 0,
           delivered: 0,
-          tariffs: {}
+          tariffs: {},
+          couriers: {} // Added for responsible breakdown
         };
       }
 
-      weeks[key].total += 1;
-      if (p.isPaid && p.status !== 'ANNULE') {
-        weeks[key].paid += 1;
-        weeks[key].revenue += p.price;
-        weeks[key].tariffs[p.price] = (weeks[key].tariffs[p.price] || 0) + 1;
+      periods[key].total += 1;
+      
+      // Responsible breakdown
+      const courierId = p.createdBy;
+      if (!periods[key].couriers[courierId]) {
+        const courier = users.find(u => u.id === courierId);
+        periods[key].couriers[courierId] = {
+          name: courier?.name || 'Inconnu',
+          city: courier?.city || '-',
+          total: 0,
+          paid: 0,
+          revenue: 0,
+          tariffs: {}
+        };
+      }
+      periods[key].couriers[courierId].total += 1;
+
+      if (p.isPaid) {
+        periods[key].paid += 1;
+        periods[key].revenue += p.price;
+        periods[key].tariffs[p.price] = (periods[key].tariffs[p.price] || 0) + 1;
+        
+        periods[key].couriers[courierId].paid += 1;
+        periods[key].couriers[courierId].revenue += p.price;
+        periods[key].couriers[courierId].tariffs[p.price] = (periods[key].couriers[courierId].tariffs[p.price] || 0) + 1;
       }
       if (p.status === 'LIVRE') {
-        weeks[key].delivered += 1;
+        periods[key].delivered += 1;
       }
     });
 
-    return Object.values(weeks).sort((a: any, b: any) => b.monday - a.monday);
+    return Object.values(periods).sort((a: any, b: any) => b.startDate - a.startDate);
   };
 
-  const weeklyData = getWeeklyBreakdown();
+  const tenDayData = getTenDayBreakdown();
 
   const getCourierPerformance = () => {
     const couriers = users.filter(u => u.role === 'courier');
     
-    // Current week start
+    // Current 10-day period start
     const now = new Date();
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
-    monday.setHours(0, 0, 0, 0);
-    const currentWeekStart = monday.toISOString().split('T')[0];
+    const day = now.getDate();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    let startDay;
+    if (day <= 10) startDay = 1;
+    else if (day <= 20) startDay = 11;
+    else startDay = 21;
+
+    const startDate = new Date(year, month, startDay);
+    startDate.setHours(0, 0, 0, 0);
+    const currentPeriodStart = startDate.toISOString().split('T')[0];
 
     // Selected month
-    const [year, month] = selectedMonth.split('-');
+    const [selYear, selMonth] = selectedMonth.split('-');
 
     return couriers.map(courier => {
       const courierParcels = parcels.filter(p => p.createdBy === courier.id && p.status !== 'ANNULE');
       
-      // Weekly stats
-      const weekParcels = courierParcels.filter(p => p.createdAt.split('T')[0] >= currentWeekStart);
-      const weekRevenue = weekParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
+      // Period stats
+      const periodParcels = courierParcels.filter(p => p.createdAt.split('T')[0] >= currentPeriodStart);
+      const periodRevenue = periodParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
       
       // Monthly stats
       const monthParcels = courierParcels.filter(p => {
         const date = new Date(p.createdAt);
-        return date.getFullYear() === parseInt(year) && (date.getMonth() + 1) === parseInt(month);
+        return date.getFullYear() === parseInt(selYear) && (date.getMonth() + 1) === parseInt(selMonth);
       });
       const monthRevenue = monthParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
 
@@ -128,10 +169,10 @@ export default function RevenueChart() {
         id: courier.id,
         name: courier.name,
         city: courier.city,
-        week: {
-          revenue: weekRevenue,
-          parcels: weekParcels.length,
-          paid: weekParcels.filter(p => p.isPaid).length
+        period: {
+          revenue: periodRevenue,
+          parcels: periodParcels.length,
+          paid: periodParcels.filter(p => p.isPaid).length
         },
         month: {
           revenue: monthRevenue,
@@ -152,11 +193,11 @@ export default function RevenueChart() {
           Analyse des Revenus
         </h2>
         <button 
-          onClick={() => exportWeeklyReportToExcel(parcels, users)}
+          onClick={() => exportTenDayReportToExcel(parcels, users)}
           className="flex items-center gap-2 px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg transition-colors text-sm font-medium"
         >
           <FileDown className="w-4 h-4" />
-          Exporter Bilan Hebdo
+          Exporter Bilan 10 Jours
         </button>
       </div>
 
@@ -245,8 +286,8 @@ export default function RevenueChart() {
               <tr className="border-b border-white/10">
                 <th className="py-3 text-gray-400 font-medium">Responsable</th>
                 <th className="py-3 text-gray-400 font-medium">Ville</th>
-                <th className="py-3 text-gray-400 font-medium text-center border-l border-white/5">Colis (Sem)</th>
-                <th className="py-3 text-gray-400 font-medium text-right text-green-400">Revenu (Sem)</th>
+                <th className="py-3 text-gray-400 font-medium text-center border-l border-white/5">Colis (Période)</th>
+                <th className="py-3 text-gray-400 font-medium text-right text-green-400">Revenu (Période)</th>
                 <th className="py-3 text-gray-400 font-medium text-center border-l border-white/5">Colis (Mois)</th>
                 <th className="py-3 text-gray-400 font-medium text-right text-purple-400">Revenu (Mois)</th>
               </tr>
@@ -259,10 +300,10 @@ export default function RevenueChart() {
                   </td>
                   <td className="py-4 text-gray-400">{perf.city || '-'}</td>
                   <td className="py-4 text-center text-gray-300 border-l border-white/5">
-                    {perf.week.parcels} <span className="text-[10px] text-gray-500">({perf.week.paid} payés)</span>
+                    {perf.period.parcels} <span className="text-[10px] text-gray-500">({perf.period.paid} payés)</span>
                   </td>
                   <td className="py-4 text-right text-green-400 font-bold">
-                    {perf.week.revenue.toLocaleString()} FCFA
+                    {perf.period.revenue.toLocaleString()} FCFA
                   </td>
                   <td className="py-4 text-center text-gray-300 border-l border-white/5">
                     {perf.month.parcels} <span className="text-[10px] text-gray-500">({perf.month.paid} payés)</span>
@@ -287,39 +328,59 @@ export default function RevenueChart() {
       <div className="bg-white/10 border border-white/20 rounded-xl p-6">
         <div className="flex items-center gap-2 mb-6">
           <Calendar className="w-5 h-5 text-blue-400" />
-          <h3 className="text-lg font-semibold text-white">Bilan Hebdomadaire</h3>
+          <h3 className="text-lg font-semibold text-white">Bilan par Période (10 Jours)</h3>
         </div>
         
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead>
               <tr className="border-b border-white/10">
-                <th className="py-3 text-gray-400 font-medium">Semaine du</th>
+                <th className="py-3 text-gray-400 font-medium">Période</th>
                 <th className="py-3 text-gray-400 font-medium text-center">Colis</th>
                 <th className="py-3 text-gray-400 font-medium text-center">Payés</th>
                 <th className="py-3 text-gray-400 font-medium">Détail Tarifs</th>
-                <th className="py-3 text-gray-400 font-medium text-right">Revenu Hebdo</th>
+                <th className="py-3 text-gray-400 font-medium text-right">Revenu Période</th>
               </tr>
             </thead>
             <tbody>
-              {weeklyData.map((week: any) => (
-                <tr key={week.monday.toISOString()} className="border-b border-white/5 hover:bg-white/5 transition-colors">
-                  <td className="py-4 text-white font-medium">
-                    {week.monday.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
-                  </td>
-                  <td className="py-4 text-gray-300 text-center">{week.total}</td>
-                  <td className="py-4 text-gray-300 text-center">{week.paid}</td>
-                  <td className="py-4 text-gray-400 text-xs italic">
-                    {Object.entries(week.tariffs).map(([price, count]) => (
-                      <span key={price} className="inline-block bg-white/5 rounded px-2 py-1 mr-2 mb-1">
-                        {price} FCFA: {count as number}
-                      </span>
-                    ))}
-                  </td>
-                  <td className="py-4 text-emerald-400 font-bold text-right">
-                    {week.revenue.toLocaleString()} FCFA
-                  </td>
-                </tr>
+              {tenDayData.map((period: any) => (
+                <React.Fragment key={period.startDate.toISOString()}>
+                  <tr className="bg-white/10 border-b border-white/20">
+                    <td className="py-4 text-white font-bold">
+                      {period.label}
+                    </td>
+                    <td className="py-4 text-gray-300 text-center font-bold">{period.total}</td>
+                    <td className="py-4 text-gray-300 text-center font-bold">{period.paid}</td>
+                    <td className="py-4 text-gray-400 text-xs italic">
+                      {Object.entries(period.tariffs).map(([price, count]) => (
+                        <span key={price} className="inline-block bg-white/5 rounded px-2 py-1 mr-2 mb-1">
+                          {price} FCFA: {count as number}
+                        </span>
+                      ))}
+                    </td>
+                    <td className="py-4 text-emerald-400 font-bold text-right">
+                      {period.revenue.toLocaleString()} FCFA
+                    </td>
+                  </tr>
+                  {Object.values(period.couriers).map((c: any, idx: number) => (
+                    <tr key={idx} className="border-b border-white/5 text-[12px] hover:bg-white/5 transition-colors">
+                      <td className="py-3 pl-8 text-gray-400">
+                        <span className="font-medium text-gray-300">{c.name}</span>
+                        <span className="ml-2 text-[10px] opacity-60">({c.city})</span>
+                      </td>
+                      <td className="py-3 text-center text-gray-400">{c.total}</td>
+                      <td className="py-3 text-center text-gray-400">{c.paid}</td>
+                      <td className="py-3 text-[10px] text-gray-500">
+                        {Object.entries(c.tariffs).map(([price, count]) => (
+                          <span key={price} className="mr-2">{price}: {count as number}</span>
+                        ))}
+                      </td>
+                      <td className="py-3 text-right text-emerald-500/70 font-medium">
+                        {c.revenue.toLocaleString()} FCFA
+                      </td>
+                    </tr>
+                  ))}
+                </React.Fragment>
               ))}
             </tbody>
           </table>

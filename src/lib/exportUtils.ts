@@ -98,8 +98,8 @@ export const exportMonthlyReportToExcel = (parcels: Parcel[], users: User[], fil
   XLSX.writeFile(wb, `${finalFilename}.xlsx`);
 };
 
-export const exportWeeklyReportToExcel = (parcels: Parcel[], users: User[]) => {
-  // Group by week (starting Monday)
+export const exportTenDayReportToExcel = (parcels: Parcel[], users: User[]) => {
+  // Group by 10-day period
   const groupedData: Record<string, any> = {};
   
   // Create a map of users for quick lookup
@@ -110,18 +110,28 @@ export const exportWeeklyReportToExcel = (parcels: Parcel[], users: User[]) => {
 
   parcels.forEach(parcel => {
     const date = new Date(parcel.createdAt);
-    // Get Monday of that week
-    const day = date.getDay();
-    const diff = date.getDate() - day + (day === 0 ? -6 : 1); // adjust when day is sunday
-    const monday = new Date(date.setDate(diff));
-    monday.setHours(0, 0, 0, 0);
-    
-    const weekKey = monday.toISOString().split('T')[0];
-    const weekLabel = `Semaine du ${monday.toLocaleDateString('fr-FR')}`;
+    const day = date.getDate();
+    const year = date.getFullYear();
+    const month = date.getMonth();
 
-    if (!groupedData[weekKey]) {
-      groupedData[weekKey] = {
-        'Semaine': weekLabel,
+    let startDay, endDay;
+    if (day <= 10) {
+      startDay = 1;
+      endDay = 10;
+    } else if (day <= 20) {
+      startDay = 11;
+      endDay = 20;
+    } else {
+      startDay = 21;
+      endDay = new Date(year, month + 1, 0).getDate();
+    }
+
+    const periodKey = `${year}-${(month + 1).toString().padStart(2, '0')}-${startDay.toString().padStart(2, '0')}`;
+    const periodLabel = `Période du ${startDay} au ${endDay} ${date.toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' })}`;
+
+    if (!groupedData[periodKey]) {
+      groupedData[periodKey] = {
+        'Période': periodLabel,
         'Total Colis': 0,
         'Colis Payés': 0,
         'Colis Livrés': 0,
@@ -130,37 +140,37 @@ export const exportWeeklyReportToExcel = (parcels: Parcel[], users: User[]) => {
       };
     }
 
-    groupedData[weekKey]['Total Colis'] += 1;
+    groupedData[periodKey]['Total Colis'] += 1;
     if (parcel.isPaid) {
-      groupedData[weekKey]['Colis Payés'] += 1;
-      groupedData[weekKey]['Chiffre d\'Affaires (FCFA)'] += parcel.price;
+      groupedData[periodKey]['Colis Payés'] += 1;
+      groupedData[periodKey]['Chiffre d\'Affaires (FCFA)'] += parcel.price;
       
       // Breakdown by price
       const priceStr = `${parcel.price} FCFA`;
-      groupedData[weekKey]['Détails Tarifs'][priceStr] = (groupedData[weekKey]['Détails Tarifs'][priceStr] || 0) + 1;
+      groupedData[periodKey]['Détails Tarifs'][priceStr] = (groupedData[periodKey]['Détails Tarifs'][priceStr] || 0) + 1;
     }
     if (parcel.status === 'LIVRE') {
-      groupedData[weekKey]['Colis Livrés'] += 1;
+      groupedData[periodKey]['Colis Livrés'] += 1;
     }
   });
 
   // Flatten data for Excel
   const reportData: any[] = [];
-  const sortedWeeks = Object.keys(groupedData).sort((a, b) => b.localeCompare(a));
+  const sortedPeriods = Object.keys(groupedData).sort((a, b) => b.localeCompare(a));
   
-  sortedWeeks.forEach(weekKey => {
-    const week = groupedData[weekKey];
+  sortedPeriods.forEach(periodKey => {
+    const period = groupedData[periodKey];
     // Convert price breakdown to string
-    const breakdown = Object.entries(week['Détails Tarifs'])
+    const breakdown = Object.entries(period['Détails Tarifs'])
       .map(([price, count]) => `${price}: ${count}`)
       .join(', ');
     
     reportData.push({
-      'Semaine': week['Semaine'],
-      'Total Colis': week['Total Colis'],
-      'Colis Payés': week['Colis Payés'],
-      'Colis Livrés': week['Colis Livrés'],
-      'Chiffre d\'Affaires (FCFA)': week['Chiffre d\'Affaires (FCFA)'],
+      'Période': period['Période'],
+      'Total Colis': period['Total Colis'],
+      'Colis Payés': period['Colis Payés'],
+      'Colis Livrés': period['Colis Livrés'],
+      'Chiffre d\'Affaires (FCFA)': period['Chiffre d\'Affaires (FCFA)'],
       'Détail des Tarifs (Colis Payés)': breakdown
     });
   });
@@ -171,7 +181,7 @@ export const exportWeeklyReportToExcel = (parcels: Parcel[], users: User[]) => {
 
   // Set column widths
   const wscols = [
-    {wch: 25}, // Semaine
+    {wch: 35}, // Période
     {wch: 15}, // Total Colis
     {wch: 15}, // Colis Payés
     {wch: 15}, // Colis Livrés
@@ -181,7 +191,7 @@ export const exportWeeklyReportToExcel = (parcels: Parcel[], users: User[]) => {
   ws['!cols'] = wscols;
 
   // Add worksheet to workbook
-  XLSX.utils.book_append_sheet(wb, ws, "Bilan Hebdomadaire");
+  XLSX.utils.book_append_sheet(wb, ws, "Bilan 10 Jours");
 
   // Add a second sheet with all raw data for reference
   const rawData = parcels.map(p => {
@@ -206,7 +216,7 @@ export const exportWeeklyReportToExcel = (parcels: Parcel[], users: User[]) => {
   XLSX.utils.book_append_sheet(wb, wsRaw, "Détails Colis");
 
   // Save file
-  XLSX.writeFile(wb, `Bilan_Hebdo_DBS_BAN_${new Date().toISOString().split('T')[0]}.xlsx`);
+  XLSX.writeFile(wb, `Bilan_10Jours_DBS_BAN_${new Date().toISOString().split('T')[0]}.xlsx`);
 };
 
 export const exportParcelListToExcel = (parcels: Parcel[], users: User[], filename: string = 'Liste_Colis') => {

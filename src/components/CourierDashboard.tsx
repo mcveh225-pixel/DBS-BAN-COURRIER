@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X } from 'lucide-react';
 import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
-import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
+import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import ParcelList from './ParcelList';
 import CreateParcelForm from './CreateParcelForm';
 import ParcelDetailsModal from './ParcelDetailsModal';
@@ -18,6 +18,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
+  const [revenueBreakdownModal, setRevenueBreakdownModal] = useState<{ isOpen: boolean; month: string; data: any[] }>({
+    isOpen: false,
+    month: '',
+    data: []
+  });
   const [detailsModal, setDetailsModal] = useState<{ isOpen: boolean; title: string; parcels: Parcel[] }>({
     isOpen: false,
     title: '',
@@ -44,6 +49,37 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const todayISO = new Date().toISOString().split('T')[0];
+  
+  // Calculate 10-day period stats
+  const getCurrentTenDayPeriod = () => {
+    const now = new Date();
+    const day = now.getDate();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    let startDay, endDay;
+
+    if (day <= 10) {
+      startDay = 1;
+      endDay = 10;
+    } else if (day <= 20) {
+      startDay = 11;
+      endDay = 20;
+    } else {
+      startDay = 21;
+      endDay = new Date(year, month + 1, 0).getDate();
+    }
+
+    const startDate = new Date(year, month, startDay);
+    startDate.setHours(0, 0, 0, 0);
+    
+    return { 
+      start: startDate.toISOString().split('T')[0],
+      label: `du ${startDay} au ${endDay}`
+    };
+  };
+
+  const tenDayPeriod = getCurrentTenDayPeriod();
   
   const todayMyParcels = myParcels.filter(p => p.createdAt.startsWith(todayISO) && p.status !== 'ANNULE');
   const destinedParcels = allParcels.filter(p => p.destinationCity === user.city && !['LIVRE', 'ANNULE'].includes(p.status));
@@ -80,7 +116,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       alert('Aucun colis à exporter.');
       return;
     }
-    exportWeeklyReportToExcel(myParcels, users);
+    exportTenDayReportToExcel(myParcels, users);
   };
 
   const handleArchiveParcel = async (parcelId: string, parcelCode: string) => {
@@ -99,6 +135,38 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     setEditingParcel(null);
   };
 
+  const handleShowRevenueBreakdown = () => {
+    const [year, month] = currentMonth.split('-');
+    const monthParcels = myParcels.filter(p => {
+      const date = new Date(p.createdAt);
+      return date.getFullYear() === parseInt(year) && (date.getMonth() + 1) === parseInt(month) && p.status !== 'ANNULE';
+    });
+
+    const periods = [
+      { label: 'du 1 au 10', start: 1, end: 10, revenue: 0, count: 0 },
+      { label: 'du 11 au 20', start: 11, end: 20, revenue: 0, count: 0 },
+      { label: 'du 21 au ' + new Date(parseInt(year), parseInt(month), 0).getDate(), start: 21, end: 31, revenue: 0, count: 0 }
+    ];
+
+    monthParcels.forEach(p => {
+      const day = new Date(p.createdAt).getDate();
+      const period = periods.find(per => day >= per.start && day <= per.end);
+      if (period && p.isPaid) {
+        period.revenue += p.price;
+        period.count += 1;
+      }
+    });
+
+    const monthNames = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+    const monthName = monthNames[parseInt(month) - 1];
+
+    setRevenueBreakdownModal({
+      isOpen: true,
+      month: `${monthName} ${year}`,
+      data: periods
+    });
+  };
+
   const statCards = stats ? [
     { 
       title: 'Créés Aujourd\'hui', 
@@ -108,7 +176,13 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       onClick: () => setDetailsModal({ isOpen: true, title: 'Colis Créés Aujourd\'hui', parcels: todayMyParcels })
     },
     { title: 'Revenus Aujourd\'hui', value: `${stats.revenue.toLocaleString()} FCFA`, icon: DollarSign, color: 'bg-green-500' },
-    { title: 'Revenus du Mois', value: `${monthlyRevenue.toLocaleString()} FCFA`, icon: BarChart3, color: 'bg-purple-600' },
+    { 
+      title: 'Revenus du Mois', 
+      value: `${monthlyRevenue.toLocaleString()} FCFA`, 
+      icon: BarChart3, 
+      color: 'bg-purple-600',
+      onClick: handleShowRevenueBreakdown
+    },
     { title: 'Colis Payés', value: stats.paidParcels, icon: CheckCircle, color: 'bg-purple-500' },
     { 
       title: 'Colis Destinés', 
@@ -159,7 +233,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-lg transition-all text-sm font-medium shadow-lg shadow-emerald-900/20"
             >
               <FileDown className="w-4 h-4" />
-              Hebdo
+              10 Jours
             </button>
             <button 
               onClick={handleExportExcel}
@@ -275,37 +349,30 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       {activeTab === 'bilan' && (
         <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Bilan Hebdomadaire */}
+            {/* Bilan 10 Jours */}
             <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
               <div className="flex items-center justify-between mb-6">
                 <h3 className="text-lg font-semibold text-white flex items-center gap-2">
                   <Calendar className="w-5 h-5 text-blue-400" />
-                  Bilan de la Semaine
+                  Bilan des 10 Jours ({tenDayPeriod.label})
                 </h3>
                 <button 
                   onClick={handleExportWeeklyExcel}
                   className="p-2 bg-emerald-600/20 border border-emerald-600/30 rounded-lg text-emerald-400 hover:bg-emerald-600/30 transition-colors"
-                  title="Exporter la semaine"
+                  title="Exporter la période"
                 >
                   <FileDown className="w-4 h-4" />
                 </button>
               </div>
               
               {(() => {
-                const now = new Date();
-                const day = now.getDay();
-                const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-                const monday = new Date(now.setDate(diff));
-                monday.setHours(0, 0, 0, 0);
-                const mondayISO = monday.toISOString().split('T')[0];
-
-                const weekParcels = myParcels.filter(p => p.createdAt.split('T')[0] >= mondayISO && p.status !== 'ANNULE');
-                const weekRevenue = weekParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
-                const weekPaidCount = weekParcels.filter(p => p.isPaid).length;
-                const weekDelivered = weekParcels.filter(p => p.status === 'LIVRE').length;
+                const periodParcels = myParcels.filter(p => p.createdAt.split('T')[0] >= tenDayPeriod.start && p.status !== 'ANNULE');
+                const periodRevenue = periodParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
+                const periodPaidCount = periodParcels.filter(p => p.isPaid).length;
+                const periodDelivered = periodParcels.filter(p => p.status === 'LIVRE').length;
 
                 const tariffs: Record<number, number> = {};
-                weekParcels.filter(p => p.isPaid).forEach(p => {
+                periodParcels.filter(p => p.isPaid).forEach(p => {
                   tariffs[p.price] = (tariffs[p.price] || 0) + 1;
                 });
 
@@ -314,19 +381,19 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                     <div className="grid grid-cols-2 gap-4">
                       <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Créés</p>
-                        <p className="text-2xl font-bold text-white mt-1">{weekParcels.length}</p>
+                        <p className="text-2xl font-bold text-white mt-1">{periodParcels.length}</p>
                       </div>
                       <div className="bg-white/5 rounded-lg p-4 border border-white/10">
-                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Revenu Hebdo</p>
-                        <p className="text-2xl font-bold text-green-400 mt-1">{weekRevenue.toLocaleString()} FCFA</p>
+                        <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Revenu Période</p>
+                        <p className="text-2xl font-bold text-green-400 mt-1">{periodRevenue.toLocaleString()} FCFA</p>
                       </div>
                       <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Payés</p>
-                        <p className="text-2xl font-bold text-blue-400 mt-1">{weekPaidCount}</p>
+                        <p className="text-2xl font-bold text-blue-400 mt-1">{periodPaidCount}</p>
                       </div>
                       <div className="bg-white/5 rounded-lg p-4 border border-white/10">
                         <p className="text-gray-400 text-xs uppercase tracking-wider font-semibold">Colis Livrés</p>
-                        <p className="text-2xl font-bold text-orange-400 mt-1">{weekDelivered}</p>
+                        <p className="text-2xl font-bold text-orange-400 mt-1">{periodDelivered}</p>
                       </div>
                     </div>
 
@@ -340,7 +407,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                           </div>
                         ))}
                         {Object.keys(tariffs).length === 0 && (
-                          <p className="text-xs text-gray-500 italic">Aucun paiement cette semaine</p>
+                          <p className="text-xs text-gray-500 italic">Aucun paiement sur cette période</p>
                         )}
                       </div>
                     </div>
@@ -430,6 +497,57 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           </div>
         </div>
       )}
+      {revenueBreakdownModal.isOpen && (
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="bg-[#1a1c2e] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">
+            <div className="p-6 border-b border-white/5 flex justify-between items-center bg-gradient-to-r from-purple-600/20 to-blue-600/20">
+              <div>
+                <h3 className="text-xl font-bold text-white">Bilan Mensuel</h3>
+                <p className="text-sm text-purple-400">{revenueBreakdownModal.month}</p>
+              </div>
+              <button 
+                onClick={() => setRevenueBreakdownModal({ ...revenueBreakdownModal, isOpen: false })}
+                className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
+              >
+                <X className="w-6 h-6" />
+              </button>
+            </div>
+            <div className="p-6 space-y-4">
+              {revenueBreakdownModal.data.map((period, idx) => (
+                <div key={idx} className="bg-white/5 rounded-xl p-4 border border-white/5 hover:border-purple-500/30 transition-all">
+                  <div className="flex justify-between items-center mb-2">
+                    <span className="text-gray-400 text-sm font-medium uppercase tracking-wider">{period.label}</span>
+                    <span className="bg-purple-600/20 text-purple-400 text-[10px] px-2 py-0.5 rounded-full border border-purple-500/20">
+                      {period.count} colis payés
+                    </span>
+                  </div>
+                  <div className="flex items-baseline gap-1">
+                    <span className="text-2xl font-bold text-white">{period.revenue.toLocaleString()}</span>
+                    <span className="text-xs text-gray-500 font-medium">FCFA</span>
+                  </div>
+                </div>
+              ))}
+              <div className="pt-4 border-t border-white/5">
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-300 font-semibold">Total du Mois</span>
+                  <span className="text-xl font-bold text-purple-400">
+                    {revenueBreakdownModal.data.reduce((sum, p) => sum + p.revenue, 0).toLocaleString()} FCFA
+                  </span>
+                </div>
+              </div>
+            </div>
+            <div className="p-4 bg-white/5 border-t border-white/5 flex justify-end">
+              <button 
+                onClick={() => setRevenueBreakdownModal({ ...revenueBreakdownModal, isOpen: false })}
+                className="px-6 py-2 bg-white/5 hover:bg-white/10 text-white rounded-lg transition-colors text-sm font-medium"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {detailsModal.isOpen && (
         <ParcelDetailsModal 
           title={detailsModal.title}

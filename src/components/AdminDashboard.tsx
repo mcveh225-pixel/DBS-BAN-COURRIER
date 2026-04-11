@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown } from 'lucide-react';
 import { getUsers, getParcels, createCourierUser, createAdminUser, deleteUser, archiveUser, getDailyRevenues, getCourierDailyStats, getCurrentUser, getDisplayStatus, getStatusColor } from '../lib/auth';
-import { exportMonthlyReportToExcel, exportWeeklyReportToExcel } from '../lib/exportUtils';
+import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import CreateCourierModal from './CreateCourierModal';
 import CreateAdminModal from './CreateAdminModal';
 import ParcelList from './ParcelList';
@@ -61,17 +61,36 @@ export default function AdminDashboard() {
   
   const todayParcels = parcels.filter(p => p.createdAt.split('T')[0] === todayUTC && p.status !== 'ANNULE');
 
-  // Calculate weekly stats (Week starts on Monday)
-  const getStartOfWeek = () => {
+  // Calculate 10-day period stats
+  const getCurrentTenDayPeriod = () => {
     const now = new Date();
-    const day = now.getDay();
-    const diff = now.getDate() - day + (day === 0 ? -6 : 1);
-    const monday = new Date(now.setDate(diff));
-    monday.setHours(0, 0, 0, 0);
-    return monday.toISOString().split('T')[0];
+    const day = now.getDate();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    let startDay, endDay;
+
+    if (day <= 10) {
+      startDay = 1;
+      endDay = 10;
+    } else if (day <= 20) {
+      startDay = 11;
+      endDay = 20;
+    } else {
+      startDay = 21;
+      endDay = new Date(year, month + 1, 0).getDate();
+    }
+
+    const startDate = new Date(year, month, startDay);
+    startDate.setHours(0, 0, 0, 0);
+    
+    return { 
+      start: startDate.toISOString().split('T')[0],
+      label: `du ${startDay} au ${endDay}`
+    };
   };
 
-  const startOfWeekUTC = getStartOfWeek();
+  const tenDayPeriod = getCurrentTenDayPeriod();
   const currentMonthUTC = new Date().toISOString().slice(0, 7);
   const currentYearUTC = new Date().toISOString().slice(0, 4);
 
@@ -83,11 +102,11 @@ export default function AdminDashboard() {
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentYearUTC))
     .reduce((sum, p) => sum + p.price, 0);
 
-  const weeklyRevenue = parcels
-    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.split('T')[0] >= startOfWeekUTC)
+  const tenDayRevenue = parcels
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.split('T')[0] >= tenDayPeriod.start)
     .reduce((sum, p) => sum + p.price, 0);
     
-  const weeklyParcels = parcels.filter(p => p.createdAt.split('T')[0] >= startOfWeekUTC && p.status !== 'ANNULE');
+  const tenDayParcels = parcels.filter(p => p.createdAt.split('T')[0] >= tenDayPeriod.start && p.status !== 'ANNULE');
 
   const handleCreateCourier = async (email: string, name: string, city: string, password?: string) => {
     try {
@@ -175,7 +194,7 @@ export default function AdminDashboard() {
       alert('Aucun colis à exporter.');
       return;
     }
-    exportWeeklyReportToExcel(parcels, users);
+    exportTenDayReportToExcel(parcels, users);
   };
 
   const stats = [
@@ -215,16 +234,16 @@ export default function AdminDashboard() {
       })
     },
     { 
-      title: 'Colis de la Semaine', 
-      value: weeklyParcels.length, 
+      title: `Colis (${tenDayPeriod.label})`, 
+      value: tenDayParcels.length, 
       icon: Package, 
       color: 'bg-indigo-500',
       onClick: () => setBreakdownModal({
         isOpen: true,
-        title: 'Colis par Responsable (Semaine)',
+        title: `Colis par Responsable (${tenDayPeriod.label})`,
         type: 'parcels_week',
         data: courierUsers.map(u => {
-          const count = weeklyParcels.filter(p => p.createdBy === u.id).length;
+          const count = tenDayParcels.filter(p => p.createdBy === u.id).length;
           return {
             name: u.name,
             city: u.city,
@@ -255,22 +274,22 @@ export default function AdminDashboard() {
       })
     },
     { 
-      title: 'Revenus Semaine', 
-      value: `${weeklyRevenue.toLocaleString()} FCFA`, 
+      title: `Revenus (${tenDayPeriod.label})`, 
+      value: `${tenDayRevenue.toLocaleString()} FCFA`, 
       icon: DollarSign, 
       color: 'bg-blue-600',
       onClick: () => setBreakdownModal({
         isOpen: true,
-        title: 'Revenus par Responsable (Semaine)',
+        title: `Revenus par Responsable (${tenDayPeriod.label})`,
         type: 'revenue_week',
         data: courierUsers.map(u => {
-          const userWeeklyParcels = weeklyParcels.filter(p => p.createdBy === u.id && p.isPaid);
-          const revenue = userWeeklyParcels.reduce((sum, p) => sum + p.price, 0);
+          const userTenDayParcels = tenDayParcels.filter(p => p.createdBy === u.id && p.isPaid);
+          const revenue = userTenDayParcels.reduce((sum, p) => sum + p.price, 0);
           return {
             name: u.name,
             city: u.city,
             value: revenue,
-            subValue: userWeeklyParcels.length
+            subValue: userTenDayParcels.length
           };
         }).filter(d => (d.value as number) > 0)
       })
@@ -368,7 +387,7 @@ export default function AdminDashboard() {
               className="flex items-center gap-2 px-4 py-2 bg-emerald-600/90 hover:bg-emerald-600 text-white rounded-lg transition-all text-sm font-medium shadow-lg shadow-emerald-900/20"
             >
               <FileDown className="w-4 h-4" />
-              Hebdo
+              10 Jours
             </button>
             <button 
               onClick={handleExportExcel}
@@ -408,8 +427,8 @@ export default function AdminDashboard() {
             <div className="space-y-3">
               {courierUsers.map(user => {
                 const s = courierStats[user.id] || { revenue: 0, deliveredParcels: 0 };
-                const userWeeklyParcels = parcels.filter(p => p.createdBy === user.id && p.createdAt.split('T')[0] >= startOfWeekUTC && p.status !== 'ANNULE');
-                const userWeeklyRevenue = userWeeklyParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
+                const userTenDayParcels = parcels.filter(p => p.createdBy === user.id && p.createdAt.split('T')[0] >= tenDayPeriod.start && p.status !== 'ANNULE');
+                const userTenDayRevenue = userTenDayParcels.filter(p => p.isPaid).reduce((sum, p) => sum + p.price, 0);
                 
                 return (
                   <div key={user.id} className="bg-white/5 rounded-lg p-4">
@@ -425,9 +444,9 @@ export default function AdminDashboard() {
                           <p className="text-gray-400 text-xs">{s.deliveredParcels} livrés</p>
                         </div>
                         <div>
-                          <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Semaine</p>
-                          <p className="text-blue-400 font-medium">{userWeeklyRevenue.toLocaleString()} FCFA</p>
-                          <p className="text-gray-400 text-xs">{userWeeklyParcels.length} colis</p>
+                          <p className="text-[10px] text-gray-500 uppercase font-bold mb-1">Période</p>
+                          <p className="text-blue-400 font-medium">{userTenDayRevenue.toLocaleString()} FCFA</p>
+                          <p className="text-gray-400 text-xs">{userTenDayParcels.length} colis</p>
                         </div>
                       </div>
                     </div>
