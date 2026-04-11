@@ -7,6 +7,8 @@ import { sendBothNotifications, createParcelArrivedMessage, createParcelDelivere
 import ParcelList from './ParcelList';
 import CreateParcelForm from './CreateParcelForm';
 import ParcelDetailsModal from './ParcelDetailsModal';
+import ConfirmationModal from './ConfirmationModal';
+import NotificationModal from './NotificationModal';
 
 interface CourierDashboardProps {
   user: User;
@@ -28,6 +30,27 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     isOpen: false,
     title: '',
     parcels: []
+  });
+
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    parcelId: string;
+    parcelCode: string;
+  }>({
+    isOpen: false,
+    parcelId: '',
+    parcelCode: ''
+  });
+  const [notificationModal, setNotificationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'info' | 'success' | 'error';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
   });
 
   const loadData = async () => {
@@ -91,7 +114,12 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
 
   const handleExportExcel = () => {
     if (myParcels.length === 0) {
-      alert('Aucun colis à exporter.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis à exporter.',
+        type: 'info'
+      });
       return;
     }
     
@@ -102,7 +130,12 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     });
 
     if (filteredParcels.length === 0) {
-      alert('Aucun colis trouvé pour le mois sélectionné.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis trouvé pour le mois sélectionné.',
+        type: 'info'
+      });
       return;
     }
 
@@ -114,20 +147,38 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
 
   const handleExportWeeklyExcel = () => {
     if (myParcels.length === 0) {
-      alert('Aucun colis à exporter.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis à exporter.',
+        type: 'info'
+      });
       return;
     }
     exportTenDayReportToExcel(myParcels, users);
   };
 
-  const handleArchiveParcel = async (parcelId: string, parcelCode: string) => {
-    if (confirm(`Voulez-vous vraiment annuler et supprimer le colis ${parcelCode} ?`)) {
-      const success = await archiveParcel(parcelId);
-      if (success) {
-        loadData();
-      } else {
-        alert('Erreur lors de la suppression du colis.');
-      }
+  const handleArchiveParcel = (parcelId: string, parcelCode: string) => {
+    setConfirmModal({
+      isOpen: true,
+      parcelId,
+      parcelCode
+    });
+  };
+
+  const confirmArchive = async () => {
+    const { parcelId } = confirmModal;
+    const success = await archiveParcel(parcelId);
+    if (success) {
+      loadData();
+      setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' });
+    } else {
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur',
+        message: 'Erreur lors de la suppression du colis.',
+        type: 'error'
+      });
     }
   };
 
@@ -623,6 +674,25 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           </div>
         </div>
       )}
+
+      <ConfirmationModal 
+        isOpen={confirmModal.isOpen}
+        title="Annuler le colis"
+        message={`Voulez-vous vraiment annuler et supprimer définitivement le colis ${confirmModal.parcelCode} ? Cette action est irréversible et mettra à jour les revenus.`}
+        confirmLabel="Annuler le colis"
+        cancelLabel="Garder le colis"
+        onConfirm={confirmArchive}
+        onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
+        isDanger={true}
+      />
+
+      <NotificationModal 
+        isOpen={notificationModal.isOpen}
+        title={notificationModal.title}
+        message={notificationModal.message}
+        type={notificationModal.type}
+        onClose={() => setNotificationModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

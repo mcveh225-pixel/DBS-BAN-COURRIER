@@ -5,6 +5,8 @@ import { sendBothNotifications, createParcelArrivedMessage, createParcelDelivere
 import { printReceipt } from '../lib/receipt';
 import { exportParcelListToExcel } from '../lib/exportUtils';
 import CreateParcelForm from './CreateParcelForm';
+import ConfirmationModal from './ConfirmationModal';
+import NotificationModal from './NotificationModal';
 
 interface ParcelListProps {
   isAdmin: boolean;
@@ -22,6 +24,26 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    parcelId: string;
+    parcelCode: string;
+  }>({
+    isOpen: false,
+    parcelId: '',
+    parcelCode: ''
+  });
+  const [notificationModal, setNotificationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'info' | 'success' | 'error';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
+  });
 
   const loadData = async () => {
     setLoading(true);
@@ -103,14 +125,27 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     if (updated) setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
   };
 
-  const handleArchiveParcel = async (parcelId: string, parcelCode: string) => {
-    if (confirm(`Voulez-vous vraiment annuler et supprimer le colis ${parcelCode} ?`)) {
-      const success = await archiveParcel(parcelId);
-      if (success) {
-        setParcels(prev => prev.filter(p => p.id !== parcelId));
-      } else {
-        alert('Erreur lors de la suppression du colis.');
-      }
+  const handleArchiveParcel = (parcelId: string, parcelCode: string) => {
+    setConfirmModal({
+      isOpen: true,
+      parcelId,
+      parcelCode
+    });
+  };
+
+  const confirmArchive = async () => {
+    const { parcelId } = confirmModal;
+    const success = await archiveParcel(parcelId);
+    if (success) {
+      setParcels(prev => prev.filter(p => p.id !== parcelId));
+      setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' });
+    } else {
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur',
+        message: 'Erreur lors de la suppression du colis.',
+        type: 'error'
+      });
     }
   };
 
@@ -137,7 +172,12 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
 
   const handleExport = () => {
     if (filteredParcels.length === 0) {
-      alert('Aucun colis à exporter.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis à exporter.',
+        type: 'info'
+      });
       return;
     }
     exportParcelListToExcel(filteredParcels, users, 'Liste_Colis_Filtres');
@@ -329,6 +369,25 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
           </div>
         </div>
       )}
+
+      <ConfirmationModal 
+        isOpen={confirmModal.isOpen}
+        title="Annuler le colis"
+        message={`Voulez-vous vraiment annuler et supprimer définitivement le colis ${confirmModal.parcelCode} ? Cette action est irréversible et mettra à jour les revenus.`}
+        confirmLabel="Annuler le colis"
+        cancelLabel="Garder le colis"
+        onConfirm={confirmArchive}
+        onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
+        isDanger={true}
+      />
+
+      <NotificationModal 
+        isOpen={notificationModal.isOpen}
+        title={notificationModal.title}
+        message={notificationModal.message}
+        type={notificationModal.type}
+        onClose={() => setNotificationModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }

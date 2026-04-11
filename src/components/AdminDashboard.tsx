@@ -8,6 +8,8 @@ import CreateAdminModal from './CreateAdminModal';
 import ParcelList from './ParcelList';
 import RevenueChart from './RevenueChart';
 import AdminBreakdownModal from './AdminBreakdownModal';
+import ConfirmationModal from './ConfirmationModal';
+import NotificationModal from './NotificationModal';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
@@ -29,6 +31,28 @@ export default function AdminDashboard() {
     title: '',
     type: 'responsables',
     data: []
+  });
+  const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    onConfirm: () => void;
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    onConfirm: () => {}
+  });
+  const [notificationModal, setNotificationModal] = useState<{
+    isOpen: boolean;
+    title: string;
+    message: string;
+    type: 'info' | 'success' | 'error';
+  }>({
+    isOpen: false,
+    title: '',
+    message: '',
+    type: 'info'
   });
   const currentUser = getCurrentUser();
 
@@ -136,45 +160,77 @@ export default function AdminDashboard() {
 
   const handleDeleteUser = async (userId: string, userName: string, userRole: string) => {
     if (userId === 'admin-1') {
-      alert('L\'administrateur principal ne peut pas être supprimé.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Action impossible',
+        message: "L'administrateur principal ne peut pas être supprimé.",
+        type: 'error'
+      });
       return;
     }
 
-    if (confirm(`Êtes-vous sûr de vouloir supprimer ${userRole === 'admin' ? 'l\'administrateur' : 'le responsable'} "${userName}" ?`)) {
-      try {
-        const success = await deleteUser(userId);
-        if (success) {
-          setUsers(users.filter(u => u.id !== userId));
-        } else {
-          alert('Impossible de supprimer le dernier administrateur.');
+    setConfirmModal({
+      isOpen: true,
+      title: 'Supprimer l\'utilisateur',
+      message: `Êtes-vous sûr de vouloir supprimer ${userRole === 'admin' ? "l'administrateur" : "le responsable"} "${userName}" ?`,
+      onConfirm: async () => {
+        try {
+          const success = await deleteUser(userId);
+          if (success) {
+            setUsers(users.filter(u => u.id !== userId));
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          } else {
+            setNotificationModal({
+              isOpen: true,
+              title: 'Erreur',
+              message: 'Impossible de supprimer le dernier administrateur.',
+              type: 'error'
+            });
+          }
+        } catch (err) {
+          console.error('Error deleting user:', err);
         }
-      } catch (err) {
-        console.error('Error deleting user:', err);
       }
-    }
+    });
   };
 
   const handleArchiveUser = async (userId: string, userName: string) => {
     if (userId === 'admin-1') {
-      alert('L\'administrateur principal ne peut pas être archivé.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Action impossible',
+        message: "L'administrateur principal ne peut pas être archivé.",
+        type: 'error'
+      });
       return;
     }
 
-    if (confirm(`Voulez-vous archiver le compte de "${userName}" ? Il ne pourra plus se connecter, et son compte sera définitivement supprimé une fois que tous ses colis auront été nettoyés (après 30 jours).`)) {
-      try {
-        const success = await archiveUser(userId);
-        if (success) {
-          setUsers(users.map(u => u.id === userId ? { ...u, isArchived: true } : u));
+    setConfirmModal({
+      isOpen: true,
+      title: 'Archiver l\'utilisateur',
+      message: `Voulez-vous archiver le compte de "${userName}" ? Il ne pourra plus se connecter, et son compte sera définitivement supprimé une fois que tous ses colis auront été nettoyés (après 30 jours).`,
+      onConfirm: async () => {
+        try {
+          const success = await archiveUser(userId);
+          if (success) {
+            setUsers(users.map(u => u.id === userId ? { ...u, isArchived: true } : u));
+            setConfirmModal(prev => ({ ...prev, isOpen: false }));
+          }
+        } catch (err) {
+          console.error('Error archiving user:', err);
         }
-      } catch (err) {
-        console.error('Error archiving user:', err);
       }
-    }
+    });
   };
 
   const handleExportExcel = () => {
     if (parcels.length === 0) {
-      alert('Aucun colis à exporter.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis à exporter.',
+        type: 'info'
+      });
       return;
     }
     
@@ -185,7 +241,12 @@ export default function AdminDashboard() {
     });
 
     if (filteredParcels.length === 0) {
-      alert('Aucun colis trouvé pour le mois sélectionné.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis trouvé pour le mois sélectionné.',
+        type: 'info'
+      });
       return;
     }
 
@@ -197,7 +258,12 @@ export default function AdminDashboard() {
 
   const handleExportWeeklyExcel = () => {
     if (parcels.length === 0) {
-      alert('Aucun colis à exporter.');
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis à exporter.',
+        type: 'info'
+      });
       return;
     }
     exportTenDayReportToExcel(parcels, users);
@@ -639,6 +705,23 @@ export default function AdminDashboard() {
           onClose={() => setBreakdownModal(prev => ({ ...prev, isOpen: false }))}
         />
       )}
+
+      <ConfirmationModal 
+        isOpen={confirmModal.isOpen}
+        title={confirmModal.title}
+        message={confirmModal.message}
+        onConfirm={confirmModal.onConfirm}
+        onCancel={() => setConfirmModal(prev => ({ ...prev, isOpen: false }))}
+        isDanger={true}
+      />
+
+      <NotificationModal 
+        isOpen={notificationModal.isOpen}
+        title={notificationModal.title}
+        message={notificationModal.message}
+        type={notificationModal.type}
+        onClose={() => setNotificationModal(prev => ({ ...prev, isOpen: false }))}
+      />
     </div>
   );
 }
