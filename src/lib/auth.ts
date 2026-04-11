@@ -326,33 +326,52 @@ export const archiveUser = async (userId: string): Promise<boolean> => {
 
 export const archiveParcel = async (parcelId: string): Promise<boolean> => {
   try {
-    // Fetch parcel first to check if it was paid and its price
-    const { data: parcel } = await supabase.from('parcels').select('is_paid, price, paid_at').eq('id', parcelId).single();
+    // Fetch parcel first to check if it was paid, its price and creation date
+    const { data: parcel } = await supabase
+      .from('parcels')
+      .select('is_paid, price, paid_at, created_at')
+      .eq('id', parcelId)
+      .single();
     
-    if (parcel && parcel.is_paid) {
-      // Subtract from daily revenue
-      const paidDate = parcel.paid_at ? parcel.paid_at.split('T')[0] : new Date().toISOString().split('T')[0];
-      const { data: existing } = await supabase.from('daily_revenues').select('*').eq('date', paidDate).single();
-      
-      if (existing) {
+    if (parcel) {
+      // 1. Handle revenue subtraction if it was paid
+      if (parcel.is_paid) {
+        const paidDate = parcel.paid_at ? parcel.paid_at.split('T')[0] : parcel.created_at.split('T')[0];
+        const { data: existing } = await supabase.from('daily_revenues').select('*').eq('date', paidDate).single();
+        
+        if (existing) {
+          await supabase
+            .from('daily_revenues')
+            .update({
+              total_revenue: Math.max(0, existing.total_revenue - parcel.price),
+              paid_parcels: Math.max(0, existing.paid_parcels - 1)
+            })
+            .eq('date', paidDate);
+        }
+      }
+
+      // 2. Decrement total parcels for the creation date
+      const createdDate = parcel.created_at.split('T')[0];
+      const { data: existingCreated } = await supabase.from('daily_revenues').select('*').eq('date', createdDate).single();
+      if (existingCreated) {
         await supabase
           .from('daily_revenues')
           .update({
-            total_revenue: Math.max(0, existing.total_revenue - parcel.price),
-            paid_parcels: Math.max(0, existing.paid_parcels - 1)
+            total_parcels: Math.max(0, existingCreated.total_parcels - 1)
           })
-          .eq('date', paidDate);
+          .eq('date', createdDate);
       }
     }
 
+    // 3. Delete the parcel from the database
     const { error } = await supabase
       .from('parcels')
-      .update({ status: 'ANNULE' })
+      .delete()
       .eq('id', parcelId);
     
     return !error;
   } catch (error) {
-    console.error('Erreur lors de l\'archivage du colis:', error);
+    console.error('Erreur lors de la suppression du colis:', error);
     return false;
   }
 };

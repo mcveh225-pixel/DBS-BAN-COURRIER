@@ -104,12 +104,12 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
   };
 
   const handleArchiveParcel = async (parcelId: string, parcelCode: string) => {
-    if (confirm(`Voulez-vous vraiment annuler le colis ${parcelCode} ?`)) {
+    if (confirm(`Voulez-vous vraiment annuler et supprimer le colis ${parcelCode} ?`)) {
       const success = await archiveParcel(parcelId);
       if (success) {
-        setParcels(prev => prev.map(p => p.id === parcelId ? { ...p, status: 'ANNULE' } : p));
+        setParcels(prev => prev.filter(p => p.id !== parcelId));
       } else {
-        alert('Erreur lors de l\'annulation du colis.');
+        alert('Erreur lors de la suppression du colis.');
       }
     }
   };

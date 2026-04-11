@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X } from 'lucide-react';
-import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel } from '../lib/auth';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck } from 'lucide-react';
+import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
+import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification } from '../lib/notifications';
 import ParcelList from './ParcelList';
 import CreateParcelForm from './CreateParcelForm';
 import ParcelDetailsModal from './ParcelDetailsModal';
@@ -120,12 +121,12 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   };
 
   const handleArchiveParcel = async (parcelId: string, parcelCode: string) => {
-    if (confirm(`Voulez-vous vraiment annuler le colis ${parcelCode} ?`)) {
+    if (confirm(`Voulez-vous vraiment annuler et supprimer le colis ${parcelCode} ?`)) {
       const success = await archiveParcel(parcelId);
       if (success) {
         loadData();
       } else {
-        alert('Erreur lors de l\'annulation du colis.');
+        alert('Erreur lors de la suppression du colis.');
       }
     }
   };
@@ -133,6 +134,32 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const handleEditSuccess = () => {
     loadData();
     setEditingParcel(null);
+  };
+
+  const handleStatusUpdate = async (parcelId: string, newStatus: Parcel['status']) => {
+    const parcel = allParcels.find(p => p.id === parcelId);
+    if (!parcel) return;
+
+    const updates: Partial<Parcel> = { status: newStatus };
+    if (newStatus === 'ARRIVE') {
+      updates.arrivedAt = new Date().toISOString();
+      sendBothNotifications(parcel.recipientPhone, createParcelArrivedMessage(parcel.code));
+      logNotification('Notification (Arrivée)', parcel.recipientPhone, parcel.code);
+    } else if (newStatus === 'LIVRE') {
+      updates.deliveredAt = new Date().toISOString();
+      sendBothNotifications(parcel.senderPhone, createParcelDeliveredMessage(parcel.code));
+      logNotification('Notification (Livraison)', parcel.senderPhone, parcel.code);
+    }
+
+    const updated = await updateParcel(parcelId, updates);
+    if (updated) {
+      // Update local state for the modal
+      setDetailsModal(prev => ({
+        ...prev,
+        parcels: prev.parcels.map(p => p.id === parcelId ? updated : p)
+      }));
+      loadData();
+    }
   };
 
   const handleShowRevenueBreakdown = () => {
@@ -334,6 +361,24 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                       <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
                         {getDisplayStatus(parcel.status)}
                       </span>
+                      <div className="flex gap-2">
+                        {parcel.status === 'EN_TRANSIT' && (
+                          <button 
+                            onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')}
+                            className="bg-orange-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
+                          >
+                            <Truck className="w-3 h-3" /> Arrivé
+                          </button>
+                        )}
+                        {parcel.status === 'ARRIVE' && (
+                          <button 
+                            onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')}
+                            className="bg-green-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
+                          >
+                            <CheckCircle className="w-3 h-3" /> Livrer
+                          </button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -553,6 +598,8 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           title={detailsModal.title}
           parcels={detailsModal.parcels}
           onClose={() => setDetailsModal({ ...detailsModal, isOpen: false })}
+          onStatusUpdate={handleStatusUpdate}
+          userCity={user.city}
         />
       )}
 

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Package, Printer } from 'lucide-react';
+import { X, Package, Printer, Truck, CheckCircle } from 'lucide-react';
 import { Parcel, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 
@@ -7,9 +7,11 @@ interface ParcelDetailsModalProps {
   title: string;
   parcels: Parcel[];
   onClose: () => void;
+  onStatusUpdate?: (parcelId: string, status: Parcel['status']) => void;
+  userCity?: string;
 }
 
-export default function ParcelDetailsModal({ title, parcels, onClose }: ParcelDetailsModalProps) {
+export default function ParcelDetailsModal({ title, parcels, onClose, onStatusUpdate, userCity }: ParcelDetailsModalProps) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-slate-800 border border-white/20 rounded-xl p-6 w-full max-w-4xl max-h-[80vh] flex flex-col">
@@ -60,6 +62,27 @@ export default function ParcelDetailsModal({ title, parcels, onClose }: ParcelDe
                         >
                           <Printer className="w-3 h-3" /> Imprimer Reçu
                         </button>
+                      )}
+                      
+                      {onStatusUpdate && userCity === parcel.destinationCity && (
+                        <div className="flex flex-col gap-1 mt-1">
+                          {parcel.status === 'EN_TRANSIT' && (
+                            <button 
+                              onClick={() => onStatusUpdate(parcel.id, 'ARRIVE')}
+                              className="flex items-center justify-center gap-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-[10px] font-bold transition-colors"
+                            >
+                              <Truck className="w-3 h-3" /> Marquer Arrivé
+                            </button>
+                          )}
+                          {parcel.status === 'ARRIVE' && (
+                            <button 
+                              onClick={() => onStatusUpdate(parcel.id, 'LIVRE')}
+                              className="flex items-center justify-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold transition-colors"
+                            >
+                              <CheckCircle className="w-3 h-3" /> Marquer Livré
+                            </button>
+                          )}
+                        </div>
                       )}
                     </div>
                   </div>
