@@ -45,12 +45,16 @@ const getOrangeAccessToken = async (): Promise<string | null> => {
 
 // Fonction pour formater le numéro de téléphone
 const formatPhoneNumber = (phone: string): string => {
+  if (!phone) return '';
   const cleaned = phone.replace(/[\s\-\(\)]/g, '');
   if (cleaned.startsWith('0')) {
-    return '+225' + cleaned.substring(1);
+    return '225' + cleaned.substring(1);
   }
-  if (!cleaned.startsWith('+')) {
-    return '+225' + cleaned;
+  if (cleaned.startsWith('+')) {
+    return cleaned.substring(1);
+  }
+  if (!cleaned.startsWith('225') && cleaned.length === 10) {
+    return '225' + cleaned;
   }
   return cleaned;
 };
@@ -78,6 +82,11 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info') =
 };
 
 export const sendSMS = async (phone: string, message: string): Promise<boolean> => {
+  if (!phone || phone.length < 8) {
+    console.warn('Invalid phone number:', phone);
+    return false;
+  }
+
   try {
     const formattedPhone = formatPhoneNumber(phone);
     const token = await getOrangeAccessToken();
@@ -87,12 +96,13 @@ export const sendSMS = async (phone: string, message: string): Promise<boolean> 
       console.log(`📱 [SIMULATION] SMS envoyé à ${formattedPhone}:`, message);
       await new Promise<void>(resolve => setTimeout(resolve, 500));
       showNotification(`SMS simulé pour ${formattedPhone}`, 'info');
+      logNotification('SMS (Simulé)', formattedPhone, 'N/A');
       return true;
     }
 
     // Envoi réel via Orange
-    const senderAddress = `tel:${ORANGE_SENDER_NUMBER}`;
-    const receiverAddress = `tel:${formattedPhone}`;
+    const senderAddress = `tel:+${ORANGE_SENDER_NUMBER}`;
+    const receiverAddress = `tel:+${formattedPhone}`;
 
     const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${encodeURIComponent(senderAddress)}/requests`, {
       method: 'POST',
@@ -159,7 +169,7 @@ export const createParcelRegisteredMessage = (
   senderCity: string,
   price: number
 ): string => {
-  return `🚚 DBS-BAN SERVICE COURRIER\nBonjour,\n${senderName}\nvous a expédié un colis depuis\n${senderCity}\n${parcelCode}\nConservez le code pour le retrait. DBS-BAN vous remercie pour votre confiance`;
+  return `🚚 DBS-BAN COURRIER\nBonjour, ${senderName} vous a expédié un colis depuis ${senderCity}. Code: ${parcelCode}. Gardez ce code pour le retrait. Merci de votre confiance!`;
 };
 
 export const createParcelArrivedMessage = (parcelCode: string): string => {
@@ -178,7 +188,7 @@ export const createParcelReceiptMessage = (
   price: number,
   isPaid: boolean
 ): string => {
-  return `🧾 DBS-BAN SERVICE COURRIER\nColis: ${parcelCode}\nDestinataire: ${recipientName}\nDestination: ${destinationCity}\nValeur du colis: ${parcelValue} FCFA\nMontant: ${price} FCFA\nStatut: ${isPaid ? 'PAYÉ' : 'À PAYER'}\nMerci de votre confiance !`;
+  return `🧾 DBS-BAN REÇU\nColis: ${parcelCode}\nDestinataire: ${recipientName}\nDestination: ${destinationCity}\nMontant: ${price} FCFA\nStatut: ${isPaid ? 'PAYÉ' : 'À PAYER'}\nMerci de votre confiance!`;
 };
 
 export const createManualSMSMessage = (

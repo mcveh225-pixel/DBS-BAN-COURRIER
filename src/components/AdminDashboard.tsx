@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown } from 'lucide-react';
+import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell } from 'lucide-react';
 import { getUsers, getParcels, createCourierUser, createAdminUser, deleteUser, archiveUser, getDailyRevenues, getCourierDailyStats, getCurrentUser, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
+import { sendSMS } from '../lib/notifications';
 import CreateCourierModal from './CreateCourierModal';
 import CreateAdminModal from './CreateAdminModal';
 import ParcelList from './ParcelList';
@@ -13,8 +14,9 @@ export default function AdminDashboard() {
   const [parcels, setParcels] = useState<any[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateAdminModal, setShowCreateAdminModal] = useState(false);
-  const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications'>('overview');
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
+  const [notificationLogs, setNotificationLogs] = useState<string[]>([]);
   const [courierStats, setCourierStats] = useState<Record<string, any>>({});
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [breakdownModal, setBreakdownModal] = useState<{
@@ -39,6 +41,10 @@ export default function AdminDashboard() {
     setUsers(usersData);
     setParcels(parcelsData);
     setDailyRevenues(revenuesData);
+
+    // Load notification logs
+    const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
+    setNotificationLogs(logs);
 
     // Load stats for each user
     const stats: Record<string, any> = {};
@@ -356,7 +362,8 @@ export default function AdminDashboard() {
             { key: 'overview', label: 'Vue d\'ensemble', icon: Eye },
             { key: 'couriers', label: 'Utilisateurs', icon: Users },
             { key: 'parcels', label: 'Colis', icon: Package },
-            { key: 'revenue', label: 'Revenus', icon: DollarSign }
+            { key: 'revenue', label: 'Revenus', icon: DollarSign },
+            { key: 'notifications', label: 'Notifications', icon: Bell }
           ].map((tab) => (
             <button
               key={tab.key}
@@ -570,6 +577,56 @@ export default function AdminDashboard() {
 
       {activeTab === 'parcels' && <ParcelList isAdmin={true} userCity="" />}
       {activeTab === 'revenue' && <RevenueChart />}
+      
+      {activeTab === 'notifications' && (
+        <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Bell className="w-5 h-5 text-yellow-400" />
+              Historique des Notifications
+            </h3>
+            <div className="flex gap-2">
+              <button 
+                onClick={async () => {
+                  const phone = prompt('Numéro de téléphone (ex: 0700000000):');
+                  if (phone) {
+                    const success = await sendSMS(phone, 'Ceci est un test du service SMS DBS-BAN.');
+                    if (success) {
+                      const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
+                      setNotificationLogs(logs);
+                    }
+                  }
+                }}
+                className="text-xs text-blue-400 hover:text-blue-300 transition-colors border border-blue-400/30 px-2 py-1 rounded"
+              >
+                Tester l'envoi
+              </button>
+              <button 
+                onClick={() => {
+                  localStorage.removeItem('notification_logs');
+                  setNotificationLogs([]);
+                }}
+                className="text-xs text-red-400 hover:text-red-300 transition-colors"
+              >
+                Effacer l'historique
+              </button>
+            </div>
+          </div>
+          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+            {notificationLogs.length > 0 ? (
+              notificationLogs.map((log, idx) => (
+                <div key={idx} className="bg-white/5 border border-white/5 rounded-lg p-3 text-sm text-gray-300 font-mono">
+                  {log}
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-12 text-gray-500 italic">
+                Aucune notification envoyée pour le moment.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {showCreateModal && <CreateCourierModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateCourier} />}
       {showCreateAdminModal && <CreateAdminModal onClose={() => setShowCreateAdminModal(false)} onCreate={handleCreateAdmin} />}
