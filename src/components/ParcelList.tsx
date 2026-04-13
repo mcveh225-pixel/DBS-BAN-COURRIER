@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X } from 'lucide-react';
-import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor } from '../lib/auth';
+import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X, Trash2 } from 'lucide-react';
+import { getParcels, updateParcel, Parcel, getCurrentUser, cancelParcel, deleteParcel, getUsers, User, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, sendSMS, createManualSMSMessage } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
 import { exportParcelListToExcel } from '../lib/exportUtils';
@@ -28,10 +28,12 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     isOpen: boolean;
     parcelId: string;
     parcelCode: string;
+    type: 'cancel' | 'delete';
   }>({
     isOpen: false,
     parcelId: '',
-    parcelCode: ''
+    parcelCode: '',
+    type: 'cancel'
   });
   const [notificationModal, setNotificationModal] = useState<{
     isOpen: boolean;
@@ -125,25 +127,46 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     if (updated) setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
   };
 
-  const handleArchiveParcel = (parcelId: string, parcelCode: string) => {
+  const handleCancelParcel = (parcelId: string, parcelCode: string) => {
     setConfirmModal({
       isOpen: true,
       parcelId,
-      parcelCode
+      parcelCode,
+      type: 'cancel'
     });
   };
 
-  const confirmArchive = async () => {
-    const { parcelId } = confirmModal;
-    const success = await archiveParcel(parcelId);
+  const handleDeleteParcel = (parcelId: string, parcelCode: string) => {
+    setConfirmModal({
+      isOpen: true,
+      parcelId,
+      parcelCode,
+      type: 'delete'
+    });
+  };
+
+  const confirmAction = async () => {
+    const { parcelId, type } = confirmModal;
+    let success = false;
+    
+    if (type === 'cancel') {
+      success = await cancelParcel(parcelId);
+    } else {
+      success = await deleteParcel(parcelId);
+    }
+
     if (success) {
-      setParcels(prev => prev.filter(p => p.id !== parcelId));
-      setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' });
+      if (type === 'cancel') {
+        setParcels(prev => prev.map(p => p.id === parcelId ? { ...p, status: 'ANNULE' } : p));
+      } else {
+        setParcels(prev => prev.filter(p => p.id !== parcelId));
+      }
+      setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '', type: 'cancel' });
     } else {
       setNotificationModal({
         isOpen: true,
         title: 'Erreur',
-        message: 'Erreur lors de la suppression du colis.',
+        message: `Erreur lors de la ${type === 'cancel' ? 'suspension' : 'suppression'} du colis.`,
         type: 'error'
       });
     }
@@ -313,7 +336,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
                     {parcel.isPaid && parcel.status === 'PAYE' && parcel.createdBy === currentUser?.id && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Send className="w-3 h-3" /> Expédier</button>}
                     {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
                     
-                    {parcel.createdBy === currentUser?.id && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                    {(parcel.createdBy === currentUser?.id || isAdmin) && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
                       <>
                         <button 
                           onClick={() => setEditingParcel(parcel)} 
@@ -322,12 +345,21 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
                           <Edit className="w-3 h-3" /> Modifier
                         </button>
                         <button 
-                          onClick={() => handleArchiveParcel(parcel.id, parcel.code)} 
+                          onClick={() => handleCancelParcel(parcel.id, parcel.code)} 
                           className="bg-red-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-red-700 transition-colors"
                         >
                           <Archive className="w-3 h-3" /> Annuler
                         </button>
                       </>
+                    )}
+
+                    {(parcel.createdBy === currentUser?.id || isAdmin) && parcel.status === 'ANNULE' && (
+                      <button 
+                        onClick={() => handleDeleteParcel(parcel.id, parcel.code)} 
+                        className="bg-red-700 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-red-800 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" /> Supprimer
+                      </button>
                     )}
 
                     {parcel.status !== 'LIVRE' && parcel.status !== 'ANNULE' && (
@@ -372,12 +404,15 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
 
       <ConfirmationModal 
         isOpen={confirmModal.isOpen}
-        title="Annuler le colis"
-        message={`Voulez-vous vraiment annuler et supprimer définitivement le colis ${confirmModal.parcelCode} ? Cette action est irréversible et mettra à jour les revenus.`}
-        confirmLabel="Annuler le colis"
+        title={confirmModal.type === 'cancel' ? "Annuler le colis" : "Supprimer le colis"}
+        message={confirmModal.type === 'cancel' 
+          ? `Voulez-vous vraiment annuler le colis ${confirmModal.parcelCode} ? Il ne sera plus comptabilisé dans les revenus.`
+          : `Voulez-vous vraiment supprimer définitivement le colis ${confirmModal.parcelCode} ? Cette action est irréversible.`
+        }
+        confirmLabel={confirmModal.type === 'cancel' ? "Annuler le colis" : "Supprimer définitivement"}
         cancelLabel="Garder le colis"
-        onConfirm={confirmArchive}
-        onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
+        onConfirm={confirmAction}
+        onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '', type: 'cancel' })}
         isDanger={true}
       />
 

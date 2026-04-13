@@ -324,46 +324,60 @@ export const archiveUser = async (userId: string): Promise<boolean> => {
   }
 };
 
-export const archiveParcel = async (parcelId: string): Promise<boolean> => {
+export const cancelParcel = async (parcelId: string): Promise<boolean> => {
   try {
     // Fetch parcel first to check if it was paid, its price and creation date
     const { data: parcel } = await supabase
       .from('parcels')
-      .select('is_paid, price, paid_at, created_at')
+      .select('is_paid, price, paid_at, created_at, status')
       .eq('id', parcelId)
       .single();
     
-    if (parcel) {
-      // 1. Handle revenue subtraction if it was paid
-      if (parcel.is_paid) {
-        const paidDate = parcel.paid_at ? parcel.paid_at.split('T')[0] : parcel.created_at.split('T')[0];
-        const { data: existing } = await supabase.from('daily_revenues').select('*').eq('date', paidDate).single();
-        
-        if (existing) {
-          await supabase
-            .from('daily_revenues')
-            .update({
-              total_revenue: Math.max(0, existing.total_revenue - parcel.price),
-              paid_parcels: Math.max(0, existing.paid_parcels - 1)
-            })
-            .eq('date', paidDate);
-        }
-      }
+    if (!parcel || parcel.status === 'ANNULE') return false;
 
-      // 2. Decrement total parcels for the creation date
-      const createdDate = parcel.created_at.split('T')[0];
-      const { data: existingCreated } = await supabase.from('daily_revenues').select('*').eq('date', createdDate).single();
-      if (existingCreated) {
+    // 1. Handle revenue subtraction if it was paid
+    if (parcel.is_paid) {
+      const paidDate = parcel.paid_at ? parcel.paid_at.split('T')[0] : parcel.created_at.split('T')[0];
+      const { data: existing } = await supabase.from('daily_revenues').select('*').eq('date', paidDate).single();
+      
+      if (existing) {
         await supabase
           .from('daily_revenues')
           .update({
-            total_parcels: Math.max(0, existingCreated.total_parcels - 1)
+            total_revenue: Math.max(0, existing.total_revenue - parcel.price),
+            paid_parcels: Math.max(0, existing.paid_parcels - 1)
           })
-          .eq('date', createdDate);
+          .eq('date', paidDate);
       }
     }
 
-    // 3. Delete the parcel from the database
+    // 2. Decrement total parcels for the creation date
+    const createdDate = parcel.created_at.split('T')[0];
+    const { data: existingCreated } = await supabase.from('daily_revenues').select('*').eq('date', createdDate).single();
+    if (existingCreated) {
+      await supabase
+        .from('daily_revenues')
+        .update({
+          total_parcels: Math.max(0, existingCreated.total_parcels - 1)
+        })
+        .eq('date', createdDate);
+    }
+
+    // 3. Update status to ANNULE
+    const { error } = await supabase
+      .from('parcels')
+      .update({ status: 'ANNULE' })
+      .eq('id', parcelId);
+    
+    return !error;
+  } catch (error) {
+    console.error('Erreur lors de l\'annulation du colis:', error);
+    return false;
+  }
+};
+
+export const deleteParcel = async (parcelId: string): Promise<boolean> => {
+  try {
     const { error } = await supabase
       .from('parcels')
       .delete()
@@ -371,9 +385,19 @@ export const archiveParcel = async (parcelId: string): Promise<boolean> => {
     
     return !error;
   } catch (error) {
-    console.error('Erreur lors de la suppression du colis:', error);
+    console.error('Erreur lors de la suppression définitive du colis:', error);
     return false;
   }
+};
+
+export const archiveParcel = async (parcelId: string): Promise<boolean> => {
+  // Keeping this for backward compatibility but it now just calls cancel then delete if needed
+  // or we can just keep it as is if we want a "one-click" delete for admins.
+  // But the user wants a two-step process for responsables.
+  return cancelParcel(parcelId).then(success => {
+    if (success) return deleteParcel(parcelId);
+    return false;
+  });
 };
 
 export const incrementTotalParcels = async () => {
