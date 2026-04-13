@@ -1,4 +1,5 @@
 import { supabase } from './supabase';
+import { sendSMS, createParcelShippedMessage, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification } from './notifications';
 
 export interface User {
   id: string;
@@ -22,7 +23,7 @@ export interface Parcel {
   packageType: string;
   quantity: number;
   value: string;
-  status: 'ENREGISTRE' | 'PAYE' | 'EN_TRANSIT' | 'ARRIVE' | 'LIVRE' | 'ANNULE';
+  status: 'ENREGISTRE' | 'PAYE' | 'EXPEDIE' | 'EN_TRANSIT' | 'ARRIVE' | 'LIVRE' | 'ANNULE';
   price: number;
   isPaid: boolean;
   paidAt?: string;
@@ -45,6 +46,7 @@ export const getDisplayStatus = (status: Parcel['status']) => {
   switch (status) {
     case 'ENREGISTRE': return 'ENREGISTRÉ';
     case 'PAYE': return 'ENREGISTRÉ';
+    case 'EXPEDIE': return 'EXPÉDIÉ';
     case 'EN_TRANSIT': return 'EN TRANSIT';
     case 'ARRIVE': return 'ARRIVÉ';
     case 'LIVRE': return 'LIVRÉ';
@@ -57,6 +59,7 @@ export const getStatusColor = (status: Parcel['status']) => {
   switch (status) {
     case 'ENREGISTRE': return 'bg-gray-600';
     case 'PAYE': return 'bg-blue-600';
+    case 'EXPEDIE': return 'bg-purple-600';
     case 'EN_TRANSIT': return 'bg-indigo-600';
     case 'ARRIVE': return 'bg-orange-600';
     case 'LIVRE': return 'bg-green-600';
@@ -324,60 +327,46 @@ export const archiveUser = async (userId: string): Promise<boolean> => {
   }
 };
 
-export const cancelParcel = async (parcelId: string): Promise<boolean> => {
+export const archiveParcel = async (parcelId: string): Promise<boolean> => {
   try {
     // Fetch parcel first to check if it was paid, its price and creation date
     const { data: parcel } = await supabase
       .from('parcels')
-      .select('is_paid, price, paid_at, created_at, status')
+      .select('is_paid, price, paid_at, created_at')
       .eq('id', parcelId)
       .single();
     
-    if (!parcel || parcel.status === 'ANNULE') return false;
+    if (parcel) {
+      // 1. Handle revenue subtraction if it was paid
+      if (parcel.is_paid) {
+        const paidDate = parcel.paid_at ? parcel.paid_at.split('T')[0] : parcel.created_at.split('T')[0];
+        const { data: existing } = await supabase.from('daily_revenues').select('*').eq('date', paidDate).single();
+        
+        if (existing) {
+          await supabase
+            .from('daily_revenues')
+            .update({
+              total_revenue: Math.max(0, existing.total_revenue - parcel.price),
+              paid_parcels: Math.max(0, existing.paid_parcels - 1)
+            })
+            .eq('date', paidDate);
+        }
+      }
 
-    // 1. Handle revenue subtraction if it was paid
-    if (parcel.is_paid) {
-      const paidDate = parcel.paid_at ? parcel.paid_at.split('T')[0] : parcel.created_at.split('T')[0];
-      const { data: existing } = await supabase.from('daily_revenues').select('*').eq('date', paidDate).single();
-      
-      if (existing) {
+      // 2. Decrement total parcels for the creation date
+      const createdDate = parcel.created_at.split('T')[0];
+      const { data: existingCreated } = await supabase.from('daily_revenues').select('*').eq('date', createdDate).single();
+      if (existingCreated) {
         await supabase
           .from('daily_revenues')
           .update({
-            total_revenue: Math.max(0, existing.total_revenue - parcel.price),
-            paid_parcels: Math.max(0, existing.paid_parcels - 1)
+            total_parcels: Math.max(0, existingCreated.total_parcels - 1)
           })
-          .eq('date', paidDate);
+          .eq('date', createdDate);
       }
     }
 
-    // 2. Decrement total parcels for the creation date
-    const createdDate = parcel.created_at.split('T')[0];
-    const { data: existingCreated } = await supabase.from('daily_revenues').select('*').eq('date', createdDate).single();
-    if (existingCreated) {
-      await supabase
-        .from('daily_revenues')
-        .update({
-          total_parcels: Math.max(0, existingCreated.total_parcels - 1)
-        })
-        .eq('date', createdDate);
-    }
-
-    // 3. Update status to ANNULE
-    const { error } = await supabase
-      .from('parcels')
-      .update({ status: 'ANNULE' })
-      .eq('id', parcelId);
-    
-    return !error;
-  } catch (error) {
-    console.error('Erreur lors de l\'annulation du colis:', error);
-    return false;
-  }
-};
-
-export const deleteParcel = async (parcelId: string): Promise<boolean> => {
-  try {
+    // 3. Delete the parcel from the database
     const { error } = await supabase
       .from('parcels')
       .delete()
@@ -385,19 +374,9 @@ export const deleteParcel = async (parcelId: string): Promise<boolean> => {
     
     return !error;
   } catch (error) {
-    console.error('Erreur lors de la suppression définitive du colis:', error);
+    console.error('Erreur lors de la suppression du colis:', error);
     return false;
   }
-};
-
-export const archiveParcel = async (parcelId: string): Promise<boolean> => {
-  // Keeping this for backward compatibility but it now just calls cancel then delete if needed
-  // or we can just keep it as is if we want a "one-click" delete for admins.
-  // But the user wants a two-step process for responsables.
-  return cancelParcel(parcelId).then(success => {
-    if (success) return deleteParcel(parcelId);
-    return false;
-  });
 };
 
 export const incrementTotalParcels = async () => {
@@ -524,10 +503,45 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
 
     // Handle delivered count if marking as delivered
     if (updates.status === 'LIVRE') {
-      const { data: current } = await supabase.from('parcels').select('status').eq('id', id).single();
+      const { data: current } = await supabase.from('parcels')
+        .select('status, code, recipient_phone')
+        .eq('id', id)
+        .single();
       if (current && current.status !== 'LIVRE') {
         await incrementDeliveredCount();
         dbUpdates.delivered_at = new Date().toISOString();
+        
+        // Send SMS for Delivery
+        const message = createParcelDeliveredMessage(current.code);
+        await sendSMS(current.recipient_phone, message);
+        logNotification('SMS Livraison', current.recipient_phone, current.code);
+      }
+    }
+
+    // Handle SMS for EXPEDIE and ARRIVE
+    if (updates.status === 'EXPEDIE' || updates.status === 'ARRIVE') {
+      const { data: current } = await supabase.from('parcels')
+        .select('status, code, recipient_phone, destination_city')
+        .eq('id', id)
+        .single();
+      
+      if (current && current.status !== updates.status) {
+        let message = '';
+        let action = '';
+        
+        if (updates.status === 'EXPEDIE') {
+          message = createParcelShippedMessage(current.code, current.destination_city);
+          action = 'SMS Expédition';
+        } else if (updates.status === 'ARRIVE') {
+          message = createParcelArrivedMessage(current.code);
+          action = 'SMS Arrivée';
+          dbUpdates.arrived_at = new Date().toISOString();
+        }
+        
+        if (message) {
+          await sendSMS(current.recipient_phone, message);
+          logNotification(action, current.recipient_phone, current.code);
+        }
       }
     }
 

@@ -66,7 +66,7 @@ export default function ParcelDetailsModal({ title, parcels, onClose, onStatusUp
                       
                       {onStatusUpdate && userCity === parcel.destinationCity && (
                         <div className="flex flex-col gap-1 mt-1">
-                          {parcel.status === 'EN_TRANSIT' && (
+                          {(parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && (
                             <button 
                               onClick={() => onStatusUpdate(parcel.id, 'ARRIVE')}
                               className="flex items-center justify-center gap-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-[10px] font-bold transition-colors"
