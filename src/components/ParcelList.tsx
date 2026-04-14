@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X } from 'lucide-react';
-import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor } from '../lib/auth';
+import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X, Trash2 } from 'lucide-react';
+import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor, deleteParcel } from '../lib/auth';
 import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, sendSMS, createManualSMSMessage } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
 import { exportParcelListToExcel } from '../lib/exportUtils';
@@ -25,6 +25,15 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
   const [loading, setLoading] = useState(true);
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    parcelId: string;
+    parcelCode: string;
+  }>({
+    isOpen: false,
+    parcelId: '',
+    parcelCode: ''
+  });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
     isOpen: boolean;
     parcelId: string;
     parcelCode: string;
@@ -127,13 +136,43 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     const { parcelId } = confirmModal;
     const success = await archiveParcel(parcelId);
     if (success) {
-      setParcels(prev => prev.filter(p => p.id !== parcelId));
+      loadData();
       setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' });
     } else {
       setNotificationModal({
         isOpen: true,
         title: 'Erreur',
-        message: 'Erreur lors de la suppression du colis.',
+        message: 'Erreur lors de l\'annulation du colis.',
+        type: 'error'
+      });
+    }
+  };
+
+  const handleDeleteParcel = (parcelId: string, parcelCode: string) => {
+    setDeleteConfirmModal({
+      isOpen: true,
+      parcelId,
+      parcelCode
+    });
+  };
+
+  const confirmDelete = async () => {
+    const { parcelId } = deleteConfirmModal;
+    const success = await deleteParcel(parcelId);
+    if (success) {
+      setParcels(prev => prev.filter(p => p.id !== parcelId));
+      setDeleteConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' });
+      setNotificationModal({
+        isOpen: true,
+        title: 'Succès',
+        message: 'Le colis a été supprimé définitivement.',
+        type: 'success'
+      });
+    } else {
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur',
+        message: 'Erreur lors de la suppression définitive du colis.',
         type: 'error'
       });
     }
@@ -332,6 +371,15 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
                     )}
                     {isDestinationCourier(parcel) && (parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && <button onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')} className="bg-orange-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Truck className="w-3 h-3" /> Arrivé</button>}
                     {isDestinationCourier(parcel) && parcel.status === 'ARRIVE' && <button onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')} className="bg-green-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Livrer</button>}
+                    
+                    {parcel.status === 'ANNULE' && (isAdmin || parcel.createdBy === currentUser?.id) && (
+                      <button 
+                        onClick={() => handleDeleteParcel(parcel.id, parcel.code)} 
+                        className="bg-red-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-red-700 transition-colors"
+                      >
+                        <Trash2 className="w-3 h-3" /> Supprimer
+                      </button>
+                    )}
                   </div>
                 </td>
               </tr>
@@ -364,11 +412,22 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
       <ConfirmationModal 
         isOpen={confirmModal.isOpen}
         title="Annuler le colis"
-        message={`Voulez-vous vraiment annuler et supprimer définitivement le colis ${confirmModal.parcelCode} ? Cette action est irréversible et mettra à jour les revenus.`}
+        message={`Voulez-vous vraiment annuler le colis ${confirmModal.parcelCode} ? Le colis restera visible avec le statut "ANNULÉ" mais ne sera plus comptabilisé dans les revenus.`}
         confirmLabel="Annuler le colis"
         cancelLabel="Garder le colis"
         onConfirm={confirmArchive}
         onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
+        isDanger={true}
+      />
+
+      <ConfirmationModal 
+        isOpen={deleteConfirmModal.isOpen}
+        title="Supprimer définitivement"
+        message={`Voulez-vous vraiment supprimer DÉFINITIVEMENT le colis ${deleteConfirmModal.parcelCode} ? Cette action est irréversible.`}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
         isDanger={true}
       />
 

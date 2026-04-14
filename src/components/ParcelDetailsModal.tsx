@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Package, Printer, Truck, CheckCircle } from 'lucide-react';
+import { X, Package, Printer, Truck, CheckCircle, Edit, Archive, Trash2 } from 'lucide-react';
 import { Parcel, getDisplayStatus, getStatusColor } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 
@@ -8,10 +8,14 @@ interface ParcelDetailsModalProps {
   parcels: Parcel[];
   onClose: () => void;
   onStatusUpdate?: (parcelId: string, status: Parcel['status']) => void;
+  onEdit?: (parcel: Parcel) => void;
+  onCancel?: (parcelId: string, parcelCode: string) => void;
+  onDelete?: (parcelId: string, parcelCode: string) => void;
   userCity?: string;
+  userId?: string;
 }
 
-export default function ParcelDetailsModal({ title, parcels, onClose, onStatusUpdate, userCity }: ParcelDetailsModalProps) {
+export default function ParcelDetailsModal({ title, parcels, onClose, onStatusUpdate, onEdit, onCancel, onDelete, userCity, userId }: ParcelDetailsModalProps) {
   return (
     <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4 z-50">
       <div className="bg-slate-800 border border-white/20 rounded-xl p-6 w-full max-w-4xl max-h-[80vh] flex flex-col">
@@ -64,23 +68,72 @@ export default function ParcelDetailsModal({ title, parcels, onClose, onStatusUp
                         </button>
                       )}
                       
-                      {onStatusUpdate && userCity === parcel.destinationCity && (
+                      {onStatusUpdate && (
                         <div className="flex flex-col gap-1 mt-1">
-                          {(parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && (
-                            <button 
-                              onClick={() => onStatusUpdate(parcel.id, 'ARRIVE')}
-                              className="flex items-center justify-center gap-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-[10px] font-bold transition-colors"
-                            >
-                              <Truck className="w-3 h-3" /> Marquer Arrivé
-                            </button>
+                          {/* Sender Actions */}
+                          {userId === parcel.createdBy && (
+                            <div className="flex flex-col gap-1">
+                              {parcel.status === 'PAYE' && (
+                                <button 
+                                  onClick={() => onStatusUpdate(parcel.id, 'EXPEDIE')}
+                                  className="flex items-center justify-center gap-1 px-2 py-1 bg-indigo-600 hover:bg-indigo-700 text-white rounded text-[10px] font-bold transition-colors"
+                                >
+                                  <Truck className="w-3 h-3" /> Expédier
+                                </button>
+                              )}
+                              
+                              {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                                <div className="flex gap-1">
+                                  {onEdit && (
+                                    <button 
+                                      onClick={() => onEdit(parcel)}
+                                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-amber-600/20 hover:bg-amber-600/30 text-amber-400 rounded text-[10px] font-bold border border-amber-600/30 transition-colors"
+                                    >
+                                      <Edit className="w-3 h-3" /> Modifier
+                                    </button>
+                                  )}
+                                  {onCancel && (
+                                    <button 
+                                      onClick={() => onCancel(parcel.id, parcel.code)}
+                                      className="flex-1 flex items-center justify-center gap-1 px-2 py-1 bg-red-600/20 hover:bg-red-600/30 text-red-400 rounded text-[10px] font-bold border border-red-600/30 transition-colors"
+                                    >
+                                      <Archive className="w-3 h-3" /> Annuler
+                                    </button>
+                                  )}
+                                </div>
+                              )}
+
+                              {parcel.status === 'ANNULE' && onDelete && (
+                                <button 
+                                  onClick={() => onDelete(parcel.id, parcel.code)}
+                                  className="w-full flex items-center justify-center gap-1 px-2 py-1 bg-red-600 hover:bg-red-700 text-white rounded text-[10px] font-bold transition-colors mt-1"
+                                >
+                                  <Trash2 className="w-3 h-3" /> Supprimer Définitivement
+                                </button>
+                              )}
+                            </div>
                           )}
-                          {parcel.status === 'ARRIVE' && (
-                            <button 
-                              onClick={() => onStatusUpdate(parcel.id, 'LIVRE')}
-                              className="flex items-center justify-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold transition-colors"
-                            >
-                              <CheckCircle className="w-3 h-3" /> Marquer Livré
-                            </button>
+
+                          {/* Destination Actions */}
+                          {userCity === parcel.destinationCity && (
+                            <>
+                              {(parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && (
+                                <button 
+                                  onClick={() => onStatusUpdate(parcel.id, 'ARRIVE')}
+                                  className="flex items-center justify-center gap-1 px-2 py-1 bg-orange-600 hover:bg-orange-700 text-white rounded text-[10px] font-bold transition-colors"
+                                >
+                                  <Truck className="w-3 h-3" /> Marquer Arrivé
+                                </button>
+                              )}
+                              {parcel.status === 'ARRIVE' && (
+                                <button 
+                                  onClick={() => onStatusUpdate(parcel.id, 'LIVRE')}
+                                  className="flex items-center justify-center gap-1 px-2 py-1 bg-green-600 hover:bg-green-700 text-white rounded text-[10px] font-bold transition-colors"
+                                >
+                                  <CheckCircle className="w-3 h-3" /> Marquer Livré
+                                </button>
+                              )}
+                            </>
                           )}
                         </div>
                       )}

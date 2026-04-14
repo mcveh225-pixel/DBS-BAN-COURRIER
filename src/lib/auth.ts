@@ -366,15 +366,28 @@ export const archiveParcel = async (parcelId: string): Promise<boolean> => {
       }
     }
 
-    // 3. Delete the parcel from the database
+    // 3. Update the parcel status to ANNULE
     const { error } = await supabase
       .from('parcels')
-      .delete()
+      .update({ status: 'ANNULE' })
       .eq('id', parcelId);
     
     return !error;
   } catch (error) {
-    console.error('Erreur lors de la suppression du colis:', error);
+    console.error('Erreur lors de l\'annulation du colis:', error);
+    return false;
+  }
+};
+
+export const deleteParcel = async (parcelId: string): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from('parcels')
+      .delete()
+      .eq('id', parcelId);
+    return !error;
+  } catch (error) {
+    console.error('Erreur lors de la suppression définitive du colis:', error);
     return false;
   }
 };

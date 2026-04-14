@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck } from 'lucide-react';
-import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel } from '../lib/auth';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2 } from 'lucide-react';
+import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel, deleteParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification } from '../lib/notifications';
@@ -33,6 +33,15 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   });
 
   const [confirmModal, setConfirmModal] = useState<{
+    isOpen: boolean;
+    parcelId: string;
+    parcelCode: string;
+  }>({
+    isOpen: false,
+    parcelId: '',
+    parcelCode: ''
+  });
+  const [deleteConfirmModal, setDeleteConfirmModal] = useState<{
     isOpen: boolean;
     parcelId: string;
     parcelCode: string;
@@ -106,6 +115,8 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const tenDayPeriod = getCurrentTenDayPeriod();
   
   const todayMyParcels = myParcels.filter(p => p.createdAt.startsWith(todayISO) && p.status !== 'ANNULE');
+  const myShippedParcels = myParcels.filter(p => p.status === 'EXPEDIE');
+  const myCanceledParcels = myParcels.filter(p => p.status === 'ANNULE');
   const destinedParcels = allParcels.filter(p => p.destinationCity === user.city && !['LIVRE', 'ANNULE'].includes(p.status));
 
   const monthlyRevenue = myParcels
@@ -235,6 +246,47 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     });
   };
 
+  const handleEditFromModal = (parcel: Parcel) => {
+    setDetailsModal(prev => ({ ...prev, isOpen: false }));
+    setEditingParcel(parcel);
+  };
+
+  const handleCancelFromModal = (parcelId: string, parcelCode: string) => {
+    setDetailsModal(prev => ({ ...prev, isOpen: false }));
+    handleArchiveParcel(parcelId, parcelCode);
+  };
+
+  const handleDeleteParcel = (parcelId: string, parcelCode: string) => {
+    setDetailsModal(prev => ({ ...prev, isOpen: false }));
+    setDeleteConfirmModal({
+      isOpen: true,
+      parcelId,
+      parcelCode
+    });
+  };
+
+  const confirmDelete = async () => {
+    const { parcelId } = deleteConfirmModal;
+    const success = await deleteParcel(parcelId);
+    if (success) {
+      loadData();
+      setDeleteConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' });
+      setNotificationModal({
+        isOpen: true,
+        title: 'Succès',
+        message: 'Le colis a été supprimé définitivement.',
+        type: 'success'
+      });
+    } else {
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur',
+        message: 'Erreur lors de la suppression définitive du colis.',
+        type: 'error'
+      });
+    }
+  };
+
   const statCards = stats ? [
     { 
       title: 'Créés Aujourd\'hui', 
@@ -242,6 +294,27 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       icon: Package, 
       color: 'bg-blue-500',
       onClick: () => setDetailsModal({ isOpen: true, title: 'Colis Créés Aujourd\'hui', parcels: todayMyParcels })
+    },
+    { 
+      title: 'Tous mes colis', 
+      value: myParcels.length, 
+      icon: Package, 
+      color: 'bg-slate-600',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Tous mes colis créés', parcels: myParcels })
+    },
+    { 
+      title: 'Mes colis expédiés', 
+      value: myShippedParcels.length, 
+      icon: Send, 
+      color: 'bg-purple-500',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Mes colis expédiés', parcels: myShippedParcels })
+    },
+    { 
+      title: 'Colis Annulés', 
+      value: myCanceledParcels.length, 
+      icon: Archive, 
+      color: 'bg-red-500',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Mes colis annulés', parcels: myCanceledParcels })
     },
     { title: 'Revenus Aujourd\'hui', value: `${stats.revenue.toLocaleString()} FCFA`, icon: DollarSign, color: 'bg-green-500' },
     { 
@@ -314,7 +387,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
         {statCards.map((stat, index) => (
           <div 
             key={index} 
@@ -380,6 +453,14 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                           </button>
                         </div>
                       )}
+                      {parcel.status === 'ANNULE' && (
+                        <button 
+                          onClick={() => handleDeleteParcel(parcel.id, parcel.code)}
+                          className="text-red-400 hover:text-red-300 flex items-center gap-1 text-xs"
+                        >
+                          <Trash2 className="w-3 h-3" /> Supprimer
+                        </button>
+                      )}
                     </div>
                   </div>
                 </div>
@@ -417,6 +498,14 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                             className="bg-green-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
                           >
                             <CheckCircle className="w-3 h-3" /> Livrer
+                          </button>
+                        )}
+                        {parcel.status === 'ANNULE' && (
+                          <button 
+                            onClick={() => handleDeleteParcel(parcel.id, parcel.code)}
+                            className="bg-red-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
+                          >
+                            <Trash2 className="w-3 h-3" /> Supprimer
                           </button>
                         )}
                       </div>
@@ -640,7 +729,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           parcels={detailsModal.parcels}
           onClose={() => setDetailsModal({ ...detailsModal, isOpen: false })}
           onStatusUpdate={handleStatusUpdate}
+          onEdit={handleEditFromModal}
+          onCancel={handleCancelFromModal}
+          onDelete={handleDeleteParcel}
           userCity={user.city}
+          userId={user.id}
         />
       )}
 
@@ -668,11 +761,22 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       <ConfirmationModal 
         isOpen={confirmModal.isOpen}
         title="Annuler le colis"
-        message={`Voulez-vous vraiment annuler et supprimer définitivement le colis ${confirmModal.parcelCode} ? Cette action est irréversible et mettra à jour les revenus.`}
+        message={`Voulez-vous vraiment annuler le colis ${confirmModal.parcelCode} ? Le colis restera visible avec le statut "ANNULÉ" mais ne sera plus comptabilisé dans les revenus.`}
         confirmLabel="Annuler le colis"
         cancelLabel="Garder le colis"
         onConfirm={confirmArchive}
         onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
+        isDanger={true}
+      />
+
+      <ConfirmationModal 
+        isOpen={deleteConfirmModal.isOpen}
+        title="Supprimer définitivement"
+        message={`Voulez-vous vraiment supprimer DÉFINITIVEMENT le colis ${deleteConfirmModal.parcelCode} ? Cette action est irréversible.`}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
         isDanger={true}
       />
 
