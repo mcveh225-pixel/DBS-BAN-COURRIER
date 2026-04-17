@@ -71,6 +71,56 @@ export const exportMonthlyReportToExcel = (parcels: Parcel[], users: User[], fil
   // Add worksheet to workbook
   XLSX.utils.book_append_sheet(wb, ws, "Bilan Mensuel");
 
+  // Add revenue breakdown by Courier and 10-day period
+  const courierDecadeData: Record<string, {
+    '1ère Décade (1-10)': number,
+    '2ème Décade (11-20)': number,
+    '3ème Décade (21-Fin)': number,
+    'Total Revenu (FCFA)': number
+  }> = {};
+
+  parcels.forEach(p => {
+    if (!p.isPaid || p.status === 'ANNULE') return;
+    
+    const courier = userMap[p.createdBy];
+    const courierName = courier?.name || 'Inconnu';
+    const day = new Date(p.createdAt).getDate();
+    
+    if (!courierDecadeData[courierName]) {
+      courierDecadeData[courierName] = {
+        '1ère Décade (1-10)': 0,
+        '2ème Décade (11-20)': 0,
+        '3ème Décade (21-Fin)': 0,
+        'Total Revenu (FCFA)': 0
+      };
+    }
+
+    if (day <= 10) {
+      courierDecadeData[courierName]['1ère Décade (1-10)'] += p.price;
+    } else if (day <= 20) {
+      courierDecadeData[courierName]['2ème Décade (11-20)'] += p.price;
+    } else {
+      courierDecadeData[courierName]['3ème Décade (21-Fin)'] += p.price;
+    }
+    courierDecadeData[courierName]['Total Revenu (FCFA)'] += p.price;
+  });
+
+  const decadeReportData = Object.entries(courierDecadeData).map(([name, stats]) => ({
+    'Responsable': name,
+    ...stats
+  })).sort((a, b) => a.Responsable.localeCompare(b.Responsable));
+
+  const wsDecade = XLSX.utils.json_to_sheet(decadeReportData);
+  const decadeCols = [
+    {wch: 25}, // Responsable
+    {wch: 20}, // 1ère Décade
+    {wch: 20}, // 2ème Décade
+    {wch: 20}, // 3ème Décade
+    {wch: 20}, // Total
+  ];
+  wsDecade['!cols'] = decadeCols;
+  XLSX.utils.book_append_sheet(wb, wsDecade, "Revenus par Responsable (10j)");
+
   // Add a second sheet with all raw data for reference
   const rawData = parcels.map(p => {
     const creator = userMap[p.createdBy];
@@ -192,6 +242,47 @@ export const exportTenDayReportToExcel = (parcels: Parcel[], users: User[]) => {
 
   // Add worksheet to workbook
   XLSX.utils.book_append_sheet(wb, ws, "Bilan 10 Jours");
+
+  // Add revenue breakdown by Courier for this period
+  const courierStatsRaw: Record<string, {
+    'Total Colis': number,
+    'Colis Payés': number,
+    'Chiffre d\'Affaires (FCFA)': number
+  }> = {};
+
+  parcels.forEach(p => {
+    const courier = userMap[p.createdBy];
+    const courierName = courier?.name || 'Inconnu';
+    
+    if (!courierStatsRaw[courierName]) {
+      courierStatsRaw[courierName] = {
+        'Total Colis': 0,
+        'Colis Payés': 0,
+        'Chiffre d\'Affaires (FCFA)': 0
+      };
+    }
+    
+    courierStatsRaw[courierName]['Total Colis'] += 1;
+    if (p.isPaid && p.status !== 'ANNULE') {
+      courierStatsRaw[courierName]['Colis Payés'] += 1;
+      courierStatsRaw[courierName]['Chiffre d\'Affaires (FCFA)'] += p.price;
+    }
+  });
+
+  const courierReportData = Object.entries(courierStatsRaw).map(([name, stats]) => ({
+    'Responsable': name,
+    ...stats
+  })).sort((a, b) => a.Responsable.localeCompare(b.Responsable));
+
+  const wsCourier = XLSX.utils.json_to_sheet(courierReportData);
+  const courierCols = [
+    {wch: 25}, // Responsable
+    {wch: 15}, // Total Colis
+    {wch: 15}, // Colis Payés
+    {wch: 25}, // CA
+  ];
+  wsCourier['!cols'] = courierCols;
+  XLSX.utils.book_append_sheet(wb, wsCourier, "Par Responsable");
 
   // Add a second sheet with all raw data for reference
   const rawData = parcels.map(p => {

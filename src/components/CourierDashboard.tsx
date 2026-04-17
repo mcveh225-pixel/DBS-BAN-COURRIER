@@ -156,6 +156,34 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     exportMonthlyReportToExcel(filteredParcels, users, `Bilan_${monthName}_${year}_${user.name}`);
   };
 
+  const getExtendedTenDayPeriodStart = () => {
+    const now = new Date();
+    const day = now.getDate();
+    const year = now.getFullYear();
+    const month = now.getMonth();
+
+    let startDay;
+    let targetMonth = month;
+    let targetYear = year;
+
+    if (day <= 10) {
+      startDay = 21;
+      targetMonth = month - 1;
+      if (targetMonth < 0) {
+        targetMonth = 11;
+        targetYear = year - 1;
+      }
+    } else if (day <= 20) {
+      startDay = 1;
+    } else {
+      startDay = 11;
+    }
+
+    const startDate = new Date(targetYear, targetMonth, startDay);
+    startDate.setHours(0, 0, 0, 0);
+    return startDate.toISOString().split('T')[0];
+  };
+
   const handleExportWeeklyExcel = () => {
     if (myParcels.length === 0) {
       setNotificationModal({
@@ -166,7 +194,21 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       });
       return;
     }
-    exportTenDayReportToExcel(myParcels, users);
+    
+    const thresholdDate = getExtendedTenDayPeriodStart();
+    const filteredParcels = myParcels.filter(p => p.createdAt.split('T')[0] >= thresholdDate);
+    
+    if (filteredParcels.length === 0) {
+      setNotificationModal({
+        isOpen: true,
+        title: 'Export impossible',
+        message: 'Aucun colis trouvé pour les deux dernières périodes de 10 jours.',
+        type: 'info'
+      });
+      return;
+    }
+
+    exportTenDayReportToExcel(filteredParcels, users);
   };
 
   const handleArchiveParcel = (parcelId: string, parcelCode: string) => {
