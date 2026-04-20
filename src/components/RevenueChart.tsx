@@ -30,9 +30,20 @@ export default function RevenueChart() {
 
   useEffect(() => { loadData(); }, []);
 
-  const currentYearUTC = new Date().toISOString().slice(0, 4);
+  // Annual revenue reset logic
+  const getAnnualRevenueStart = () => {
+    const now = new Date();
+    const resetDate = new Date('2026-05-01');
+    if (now >= resetDate) {
+      return '2026-05-01';
+    }
+    return `${now.getFullYear()}-01-01`;
+  };
+
+  const annualRevenueStart = getAnnualRevenueStart();
+
   const totalRevenue = parcels
-    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentYearUTC))
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt >= annualRevenueStart)
     .reduce((sum, p) => sum + p.price, 0);
   const totalParcels = parcels.filter(p => p.status !== 'ANNULE').length;
   const deliveredParcels = parcels.filter(p => p.status === 'LIVRE').length;
@@ -215,7 +226,7 @@ export default function RevenueChart() {
                   p.createdBy === u.id && 
                   p.isPaid && 
                   p.status !== 'ANNULE' && 
-                  p.createdAt.startsWith(currentYearUTC)
+                  p.createdAt >= annualRevenueStart
                 );
                 const revenue = userYearlyParcels.reduce((sum, p) => sum + p.price, 0);
                 return {
