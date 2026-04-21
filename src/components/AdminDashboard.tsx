@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell } from 'lucide-react';
-import { getUsers, getParcels, createCourierUser, createAdminUser, deleteUser, archiveUser, getDailyRevenues, getCourierDailyStats, getCurrentUser, getDisplayStatus, getStatusColor } from '../lib/auth';
+import { getUsers, getParcels, createCourierUser, createAdminUser, deleteUser, archiveUser, getDailyRevenues, getCourierDailyStats, getCurrentUser, getDisplayStatus, getStatusColor, Parcel } from '../lib/auth';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { sendSMS } from '../lib/notifications';
 import CreateCourierModal from './CreateCourierModal';
@@ -10,12 +10,14 @@ import RevenueChart from './RevenueChart';
 import AdminBreakdownModal from './AdminBreakdownModal';
 import ConfirmationModal from './ConfirmationModal';
 import NotificationModal from './NotificationModal';
+import ParcelDetailsModal from './ParcelDetailsModal';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
   const [parcels, setParcels] = useState<any[]>([]);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateAdminModal, setShowCreateAdminModal] = useState(false);
+  const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications'>('overview');
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<string[]>([]);
@@ -473,6 +475,17 @@ export default function AdminDashboard() {
     }
   ];
 
+  if (selectedParcel) {
+    return (
+      <ParcelDetailsModal
+        parcel={selectedParcel}
+        onBack={() => setSelectedParcel(null)}
+        userId={currentUser?.id}
+        userCity=""
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white/5 p-4 rounded-xl border border-white/10">
@@ -586,11 +599,19 @@ export default function AdminDashboard() {
             <h3 className="text-lg font-semibold text-white mb-4">Activité Récente</h3>
             <div className="space-y-3">
               {parcels.slice(0, 5).map(parcel => (
-                <div key={parcel.id} className="bg-white/5 rounded-lg p-3">
+                <div 
+                  key={parcel.id} 
+                  className="bg-white/5 rounded-lg p-3 hover:bg-white/10 transition-colors cursor-pointer group"
+                  onClick={() => setSelectedParcel(parcel)}
+                >
                   <div className="flex justify-between items-center">
                     <div>
-                      <p className="text-white font-medium">{parcel.code}</p>
+                      <p className="text-white font-medium flex items-center gap-2">
+                        {parcel.code}
+                        <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
+                      </p>
                       <p className="text-sm text-gray-300">{parcel.destinationCity}</p>
+                      <p className="text-[10px] text-gray-500">{parcel.recipientName}</p>
                     </div>
                     <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
                       {getDisplayStatus(parcel.status)}
@@ -694,7 +715,7 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {activeTab === 'parcels' && <ParcelList isAdmin={true} userCity="" />}
+      {activeTab === 'parcels' && <ParcelList isAdmin={true} userCity="" onParcelClick={setSelectedParcel} />}
       {activeTab === 'revenue' && <RevenueChart />}
       
       {activeTab === 'notifications' && (

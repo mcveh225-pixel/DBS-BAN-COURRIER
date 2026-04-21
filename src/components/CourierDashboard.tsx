@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2 } from 'lucide-react';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2, ChevronLeft } from 'lucide-react';
 import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel, deleteParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification } from '../lib/notifications';
 import ParcelList from './ParcelList';
 import CreateParcelForm from './CreateParcelForm';
-import ParcelDetailsModal from './ParcelDetailsModal';
+import ParcelDetailsPage from './ParcelDetailsModal';
 import ConfirmationModal from './ConfirmationModal';
 import NotificationModal from './NotificationModal';
 
@@ -21,6 +21,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
+  const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [revenueBreakdownModal, setRevenueBreakdownModal] = useState<{ isOpen: boolean; month: string; data: any[] }>({
     isOpen: false,
     month: '',
@@ -377,6 +378,24 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-orange-500' }
   ] : [];
 
+  if (selectedParcel) {
+    return (
+      <ParcelDetailsPage
+        parcel={selectedParcel}
+        onBack={() => setSelectedParcel(null)}
+        onStatusUpdate={handleStatusUpdate}
+        onEdit={(p) => {
+          setSelectedParcel(null);
+          setEditingParcel(p);
+        }}
+        onCancel={handleCancelFromModal}
+        onDelete={handleDeleteParcel}
+        userCity={user.city}
+        userId={user.id}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4 bg-white/5 p-4 rounded-xl border border-white/10">
@@ -460,14 +479,21 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             <h3 className="text-lg font-semibold text-white mb-4">Mes Colis Récents</h3>
             <div className="space-y-3">
               {myParcels.slice(0, 5).map(parcel => (
-                <div key={parcel.id} className="bg-white/5 rounded-lg p-4">
+                <div 
+                  key={parcel.id} 
+                  className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
+                  onClick={() => setSelectedParcel(parcel)}
+                >
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="font-medium text-white">{parcel.code}</p>
+                      <p className="font-medium text-white flex items-center gap-2">
+                        {parcel.code}
+                        <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
+                      </p>
                       <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
                       <p className="text-sm text-gray-300">{parcel.recipientName}</p>
                     </div>
-                    <div className="text-right flex flex-col items-end gap-2">
+                    <div className="text-right flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
                       <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
                         {getDisplayStatus(parcel.status)}
                       </span>
@@ -514,14 +540,21 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             <h3 className="text-lg font-semibold text-white mb-4">Colis pour {user.city}</h3>
             <div className="space-y-3">
               {parcelsForMe.slice(0, 5).map(parcel => (
-                <div key={parcel.id} className="bg-white/5 rounded-lg p-4">
+                <div 
+                  key={parcel.id} 
+                  className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
+                  onClick={() => setSelectedParcel(parcel)}
+                >
                   <div className="flex justify-between items-start">
                     <div>
-                      <p className="font-medium text-white">{parcel.code}</p>
+                      <p className="font-medium text-white flex items-center gap-2">
+                        {parcel.code}
+                        <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
+                      </p>
                       <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
                       <p className="text-sm text-gray-300">{parcel.recipientName}</p>
                     </div>
-                    <div className="flex flex-col items-end gap-2">
+                    <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
                       <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
                         {getDisplayStatus(parcel.status)}
                       </span>
@@ -560,7 +593,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
         </div>
       )}
 
-      {activeTab === 'parcels' && <ParcelList isAdmin={false} userCity={user.city || ''} />}
+      {activeTab === 'parcels' && <ParcelList isAdmin={false} userCity={user.city || ''} onParcelClick={setSelectedParcel} />}
       {activeTab === 'create' && <CreateParcelForm userId={user.id} onCancel={() => setActiveTab('overview')} />}
       
       {activeTab === 'bilan' && (
@@ -766,17 +799,44 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       )}
 
       {detailsModal.isOpen && (
-        <ParcelDetailsModal 
-          title={detailsModal.title}
-          parcels={detailsModal.parcels}
-          onClose={() => setDetailsModal({ ...detailsModal, isOpen: false })}
-          onStatusUpdate={handleStatusUpdate}
-          onEdit={handleEditFromModal}
-          onCancel={handleCancelFromModal}
-          onDelete={handleDeleteParcel}
-          userCity={user.city}
-          userId={user.id}
-        />
+        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+          <div className="w-full max-w-2xl bg-slate-900 border border-white/20 rounded-2xl p-6 overflow-hidden shadow-2xl">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-white tracking-tight">{detailsModal.title}</h3>
+              <button 
+                onClick={() => setDetailsModal(prev => ({ ...prev, isOpen: false }))} 
+                className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-all"
+              >
+                <Plus className="w-6 h-6 rotate-45" />
+              </button>
+            </div>
+            <div className="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
+              <div className="grid grid-cols-1 gap-3">
+                {detailsModal.parcels.map(p => (
+                  <div 
+                    key={p.id} 
+                    onClick={() => { setSelectedParcel(p); setDetailsModal(prev => ({ ...prev, isOpen: false })); }} 
+                    className="group bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-blue-600/20 hover:border-blue-500/50 transition-all cursor-pointer flex justify-between items-center"
+                  >
+                    <div>
+                      <p className="font-black text-white group-hover:text-blue-400 transition-colors">{p.code}</p>
+                      <p className="text-xs text-gray-500 group-hover:text-gray-300 transition-colors">{p.recipientName} • {p.destinationCity}</p>
+                    </div>
+                    <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-blue-400 rotate-180 transition-all" />
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div className="mt-6 pt-4 border-t border-white/10 flex justify-end">
+              <button 
+                onClick={() => setDetailsModal(prev => ({ ...prev, isOpen: false }))}
+                className="px-6 py-2 bg-gray-700 hover:bg-gray-600 text-white rounded-xl text-sm font-bold transition-all"
+              >
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {editingParcel && (

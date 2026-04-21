@@ -7,13 +7,15 @@ import { exportParcelListToExcel } from '../lib/exportUtils';
 import CreateParcelForm from './CreateParcelForm';
 import ConfirmationModal from './ConfirmationModal';
 import NotificationModal from './NotificationModal';
+import ParcelDetailsModal from './ParcelDetailsModal';
 
 interface ParcelListProps {
   isAdmin: boolean;
   userCity: string;
+  onParcelClick?: (parcel: Parcel) => void;
 }
 
-export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
+export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelListProps) {
   const [parcels, setParcels] = useState<Parcel[]>([]);
   const [filteredParcels, setFilteredParcels] = useState<Parcel[]>([]);
   const [searchTerm, setSearchTerm] = useState('');
@@ -24,6 +26,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
+  const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     parcelId: string;
@@ -111,7 +114,12 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
 
     const updates: Partial<Parcel> = { status: newStatus };
     const updated = await updateParcel(parcelId, updates);
-    if (updated) setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
+    if (updated) {
+      setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
+      if (selectedParcel?.id === parcelId) {
+        setSelectedParcel(updated);
+      }
+    }
   };
 
   const handlePayment = async (parcelId: string) => {
@@ -217,6 +225,24 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
     new Date(p.createdAt).toLocaleDateString() === today
   ).length;
 
+  if (selectedParcel) {
+    return (
+      <ParcelDetailsModal 
+        parcel={selectedParcel}
+        onBack={() => setSelectedParcel(null)}
+        onStatusUpdate={handleStatusUpdate}
+        onEdit={(p) => {
+          setSelectedParcel(null);
+          setEditingParcel(p);
+        }}
+        onCancel={handleArchiveParcel}
+        onDelete={handleDeleteParcel}
+        userCity={userCity}
+        userId={currentUser?.id}
+      />
+    );
+  }
+
   return (
     <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
       <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
@@ -316,8 +342,17 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
           </thead>
           <tbody>
             {filteredParcels.map(parcel => (
-              <tr key={parcel.id} className="border-b border-white/5 hover:bg-white/5">
-                <td className="py-4 text-white">{parcel.code}</td>
+              <tr 
+                key={parcel.id} 
+                className="border-b border-white/5 hover:bg-white/10 transition-colors cursor-pointer group"
+                onClick={() => onParcelClick ? onParcelClick(parcel) : setSelectedParcel(parcel)}
+              >
+                <td className="py-4 text-white">
+                  <div className="flex flex-col">
+                    <span className="font-bold">{parcel.code}</span>
+                    <span className="text-[10px] text-gray-500 opacity-50 group-hover:opacity-100 transition-opacity">Cliquer pour détails</span>
+                  </div>
+                </td>
                 <td className="py-4">
                   <p className="text-white">{parcel.recipientName}</p>
                   <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
@@ -338,7 +373,7 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
                   </span>
                 </td>
                 <td className="py-4">
-                  <div className="flex flex-wrap gap-2">
+                  <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                     {!parcel.isPaid && parcel.createdBy === currentUser?.id && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CreditCard className="w-3 h-3" /> Payer</button>}
                     {parcel.isPaid && parcel.status === 'PAYE' && parcel.createdBy === currentUser?.id && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Send className="w-3 h-3" /> Expédier</button>}
                     {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
@@ -408,28 +443,6 @@ export default function ParcelList({ isAdmin, userCity }: ParcelListProps) {
           </div>
         </div>
       )}
-
-      <ConfirmationModal 
-        isOpen={confirmModal.isOpen}
-        title="Annuler le colis"
-        message={`Voulez-vous vraiment annuler le colis ${confirmModal.parcelCode} ? Le colis restera visible avec le statut "ANNULÉ" mais ne sera plus comptabilisé dans les revenus.`}
-        confirmLabel="Annuler le colis"
-        cancelLabel="Garder le colis"
-        onConfirm={confirmArchive}
-        onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
-        isDanger={true}
-      />
-
-      <ConfirmationModal 
-        isOpen={deleteConfirmModal.isOpen}
-        title="Supprimer définitivement"
-        message={`Voulez-vous vraiment supprimer DÉFINITIVEMENT le colis ${deleteConfirmModal.parcelCode} ? Cette action est irréversible.`}
-        confirmLabel="Supprimer"
-        cancelLabel="Annuler"
-        onConfirm={confirmDelete}
-        onCancel={() => setDeleteConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
-        isDanger={true}
-      />
 
       <NotificationModal 
         isOpen={notificationModal.isOpen}
