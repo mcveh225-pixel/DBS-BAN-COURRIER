@@ -69,7 +69,10 @@ export default function CreateParcelForm({ userId, onCancel, parcel, onSuccess }
           destinationCity: formData.destinationCity, packageType: formData.packageType,
           quantity: Number(formData.quantity),
           value: formData.value, price: Number(formData.price),
-          status: formData.isPaid ? 'PAYE' : 'ENREGISTRE', isPaid: formData.isPaid, createdBy: userId, notes: formData.notes
+          status: formData.isPaid ? 'PAYE' : 'ENREGISTRE', isPaid: formData.isPaid, 
+          createdBy: userId, 
+          originCity: getCurrentUser()?.city || 'Inconnue',
+          notes: formData.notes
         });
 
         const msg = createParcelRegisteredMessage(newParcel.code, formData.senderName, getCurrentUser()?.city || 'Inconnue', Number(formData.price));

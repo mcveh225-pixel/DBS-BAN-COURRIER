@@ -610,8 +610,12 @@ export default function AdminDashboard() {
                         {parcel.code}
                         <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
                       </p>
-                      <p className="text-sm text-gray-300">{parcel.destinationCity}</p>
-                      <p className="text-[10px] text-gray-500">{parcel.recipientName}</p>
+                      <div className="flex items-center gap-1.5 mt-0.5 text-[9px]">
+                        <span className="text-blue-400 font-bold px-1 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
+                        <span className="text-gray-600">→</span>
+                        <span className="text-orange-400 font-bold px-1 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                      </div>
+                      <p className="text-[10px] text-gray-500 mt-1">{parcel.recipientName}</p>
                     </div>
                     <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
                       {getDisplayStatus(parcel.status)}

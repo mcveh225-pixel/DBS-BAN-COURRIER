@@ -93,6 +93,13 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
                       <p className="text-xl text-white font-bold">{parcel.senderName}</p>
                     </div>
                     <div>
+                      <p className="text-[10px] text-gray-600 uppercase font-black tracking-widest mb-1">Gare d'Expédition</p>
+                      <p className="text-white font-bold flex items-center gap-2">
+                        <MapPin className="w-3 h-3 text-blue-500" />
+                        {parcel.originCity}
+                      </p>
+                    </div>
+                    <div>
                       <p className="text-[10px] text-gray-600 uppercase font-black tracking-widest mb-1">Contact</p>
                       <button className="text-blue-400 font-black text-lg flex items-center gap-2 hover:text-blue-300 transition-colors">
                         <Phone className="w-4 h-4" />

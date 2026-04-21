@@ -30,6 +30,7 @@ export interface Parcel {
   arrivedAt?: string;
   deliveredAt?: string;
   createdBy: string;
+  originCity: string;
   createdAt: string;
   notes?: string;
 }
@@ -102,6 +103,7 @@ const mapParcel = (dbParcel: any): Parcel => ({
   arrivedAt: dbParcel.arrived_at,
   deliveredAt: dbParcel.delivered_at,
   createdBy: dbParcel.created_by,
+  originCity: dbParcel.origin_city || (dbParcel.creator && dbParcel.creator.city) || 'Inconnue',
   createdAt: dbParcel.created_at,
   notes: dbParcel.notes
 });
@@ -120,6 +122,7 @@ export const initializeAdmin = async () => {
         email: 'mcveh225@gmail.com',
         name: 'Administrateur Principal',
         role: 'admin',
+        city: 'Adjamé',
         password: 'admin123',
         created_at: new Date().toISOString()
       };
@@ -249,7 +252,7 @@ export const getParcels = async (): Promise<Parcel[]> => {
   try {
     const { data, error } = await supabase
       .from('parcels')
-      .select('*')
+      .select('*, creator:users!created_by(city)')
       .order('created_at', { ascending: false });
     
     if (error) throw error;
@@ -437,11 +440,17 @@ export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'cre
       is_paid: parcelData.isPaid,
       paid_at: parcelData.isPaid ? new Date().toISOString() : null,
       created_by: parcelData.createdBy,
+      origin_city: parcelData.originCity,
       created_at: new Date().toISOString(),
       notes: parcelData.notes
     };
 
-    const { error } = await supabase.from('parcels').insert([newParcel]);
+    const { data: createdParcel, error } = await supabase
+      .from('parcels')
+      .insert([newParcel])
+      .select('*, creator:users!created_by(city)')
+      .single();
+    
     if (error) throw error;
     
     // Increment total parcels count for today
@@ -451,7 +460,7 @@ export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'cre
       await updateDailyRevenue(newParcel.price);
     }
     
-    return mapParcel(newParcel);
+    return mapParcel(createdParcel);
   } catch (error) {
     console.error('Erreur lors de la création du colis:', error);
     throw error;
@@ -503,6 +512,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
     if (updates.value !== undefined) dbUpdates.value = updates.value;
     if (updates.price !== undefined) dbUpdates.price = updates.price;
+    if (updates.originCity) dbUpdates.origin_city = updates.originCity;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
     // Handle revenue update if marking as paid
@@ -562,7 +572,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
       .from('parcels')
       .update(dbUpdates)
       .eq('id', id)
-      .select()
+      .select('*, creator:users!created_by(city)')
       .single();
 
     if (error) throw error;

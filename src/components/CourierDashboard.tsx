@@ -491,7 +491,12 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                         <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
                       </p>
                       <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
-                      <p className="text-sm text-gray-300">{parcel.recipientName}</p>
+                      <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
+                      <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                        <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
+                        <span className="text-gray-600">→</span>
+                        <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                      </div>
                     </div>
                     <div className="text-right flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
                       <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
@@ -552,7 +557,12 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                         <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
                       </p>
                       <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
-                      <p className="text-sm text-gray-300">{parcel.recipientName}</p>
+                      <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
+                      <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                        <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
+                        <span className="text-gray-600">→</span>
+                        <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                      </div>
                     </div>
                     <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
                       <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>

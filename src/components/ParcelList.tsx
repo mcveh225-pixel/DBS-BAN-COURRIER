@@ -356,7 +356,11 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                 <td className="py-4">
                   <p className="text-white">{parcel.recipientName}</p>
                   <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
-                  <p className="text-sm text-gray-300">{parcel.destinationCity}</p>
+                  <div className="flex items-center gap-1.5 mt-1">
+                    <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">{parcel.originCity}</span>
+                    <span className="text-gray-600 text-xs text-[10px]">→</span>
+                    <span className="text-[10px] bg-orange-500/10 text-orange-400 px-1.5 py-0.5 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                  </div>
                 </td>
                 {isAdmin && (
                   <td className="py-4 text-gray-300 text-sm">
