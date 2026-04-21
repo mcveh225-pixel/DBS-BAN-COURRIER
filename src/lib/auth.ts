@@ -103,7 +103,7 @@ const mapParcel = (dbParcel: any): Parcel => ({
   arrivedAt: dbParcel.arrived_at,
   deliveredAt: dbParcel.delivered_at,
   createdBy: dbParcel.created_by,
-  originCity: dbParcel.origin_city || (dbParcel.creator && dbParcel.creator.city) || 'Inconnue',
+  originCity: (dbParcel.creator && dbParcel.creator.city) || 'Inconnue',
   createdAt: dbParcel.created_at,
   notes: dbParcel.notes
 });
@@ -440,7 +440,6 @@ export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'cre
       is_paid: parcelData.isPaid,
       paid_at: parcelData.isPaid ? new Date().toISOString() : null,
       created_by: parcelData.createdBy,
-      origin_city: parcelData.originCity,
       created_at: new Date().toISOString(),
       notes: parcelData.notes
     };
@@ -512,7 +511,6 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
     if (updates.value !== undefined) dbUpdates.value = updates.value;
     if (updates.price !== undefined) dbUpdates.price = updates.price;
-    if (updates.originCity) dbUpdates.origin_city = updates.originCity;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
     // Handle revenue update if marking as paid
