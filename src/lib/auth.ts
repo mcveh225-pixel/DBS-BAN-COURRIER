@@ -669,7 +669,7 @@ export const getCourierDailyStats = async (courierId: string) => {
         .from('parcels')
         .select('*', { count: 'exact', head: true })
         .eq('destination_city', city)
-        .not('status', 'in', '("LIVRE","ANNULE")');
+        .in('status', ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE']);
       destinedCount = count || 0;
     }
 
