@@ -79,7 +79,10 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   }, [user.id, activeTab]);
   
   const myParcels = allParcels.filter(p => p.createdBy === user.id);
-  const parcelsForMe = allParcels.filter(p => p.destinationCity === user.city);
+  const parcelsForMe = allParcels.filter(p => 
+    p.destinationCity === user.city && 
+    !['ENREGISTRE', 'PAYE', 'ANNULE'].includes(p.status)
+  );
 
   const currentMonth = new Date().toISOString().slice(0, 7);
   const todayISO = new Date().toISOString().split('T')[0];
@@ -118,7 +121,10 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const todayMyParcels = myParcels.filter(p => p.createdAt.startsWith(todayISO) && p.status !== 'ANNULE');
   const myShippedParcels = myParcels.filter(p => p.status === 'EXPEDIE');
   const myCanceledParcels = myParcels.filter(p => p.status === 'ANNULE');
-  const destinedParcels = allParcels.filter(p => p.destinationCity === user.city && !['LIVRE', 'ANNULE'].includes(p.status));
+  const destinedParcels = allParcels.filter(p => 
+    p.destinationCity === user.city && 
+    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE'].includes(p.status)
+  );
 
   const monthlyRevenue = myParcels
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentMonth))
