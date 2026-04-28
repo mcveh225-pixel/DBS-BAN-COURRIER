@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, LogOut, Settings } from 'lucide-react';
+import Logo from './components/Logo';
 import AuthPage from './components/AuthPage';
 import AdminDashboard from './components/AdminDashboard';
 import CourierDashboard from './components/CourierDashboard';
@@ -37,24 +38,7 @@ function App() {
       <header className="bg-black/20 border-b border-white/10 backdrop-blur-sm">
         <div className="max-w-7xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="relative w-10 h-10 flex items-center justify-center bg-white/10 rounded-lg overflow-hidden">
-              <img 
-                src="/logo.png" 
-                alt="DBS-BAN Logo" 
-                className="w-full h-full object-contain"
-                referrerPolicy="no-referrer"
-                onError={(e) => {
-                  // If image fails, show the Package icon as fallback instead of hiding
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = 'none';
-                  const fallback = target.parentElement?.querySelector('.logo-fallback');
-                  if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                }}
-              />
-              <div className="logo-fallback hidden absolute inset-0 items-center justify-center">
-                <Package className="w-6 h-6 text-blue-400" />
-              </div>
-            </div>
+            <Logo size="md" />
             <div>
               <h1 className="text-xl font-bold text-white">DBS-BAN Courrier</h1>
               <p className="text-xs text-gray-300">

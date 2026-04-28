@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Package, Mail, Lock, AlertCircle, Eye, EyeOff } from 'lucide-react';
+import Logo from './Logo';
 import { login, User, initializeAdmin } from '../lib/auth';
 
 interface AuthPageProps {
@@ -49,24 +50,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
         <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-2xl shadow-2xl p-8">
           <div className="text-center mb-8">
             <div className="flex justify-center mb-4">
-              <div className="relative w-24 h-24 flex items-center justify-center bg-white/10 rounded-2xl overflow-hidden border border-white/10">
-                <img 
-                  src="/logo.png" 
-                  alt="DBS-BAN Logo" 
-                  className="w-full h-full object-contain"
-                  referrerPolicy="no-referrer"
-                  onError={(e) => {
-                    // Fallback if image not found
-                    const target = e.target as HTMLImageElement;
-                    target.style.display = 'none';
-                    const fallback = target.parentElement?.querySelector('.logo-fallback');
-                    if (fallback) (fallback as HTMLElement).style.display = 'flex';
-                  }}
-                />
-                <div className="logo-fallback hidden absolute inset-0 items-center justify-center">
-                  <Package className="w-12 h-12 text-blue-400" />
-                </div>
-              </div>
+              <Logo size="lg" />
             </div>
             <h1 className="text-3xl font-bold text-white mb-2">DBS-BAN</h1>
             <p className="text-gray-300">Service Courrier - Connexion</p>

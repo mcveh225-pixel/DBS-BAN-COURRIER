@@ -81,7 +81,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const myParcels = allParcels.filter(p => p.createdBy === user.id);
   const parcelsForMe = allParcels.filter(p => 
     p.destinationCity === user.city && 
-    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status)
+    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE'].includes(p.status)
   );
 
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -123,7 +123,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const myCanceledParcels = myParcels.filter(p => p.status === 'ANNULE');
   const destinedParcels = allParcels.filter(p => 
     p.destinationCity === user.city && 
-    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status)
+    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE'].includes(p.status)
   );
 
   const monthlyRevenue = myParcels

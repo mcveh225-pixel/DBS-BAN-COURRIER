@@ -70,7 +70,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
     if (!isAdmin && currentUser) {
       parcelsToSet = allParcels.filter(p => 
         p.createdBy === currentUser.id || 
-        (p.destinationCity === userCity && ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status))
+        (p.destinationCity === userCity && ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE'].includes(p.status))
       );
     }
 
