@@ -768,7 +768,13 @@ export default function AdminDashboard() {
                   
                   try {
                     const response = await fetch('/api/check-orange-config');
-                    const data = await response.json();
+                    let data;
+                    try {
+                      data = await response.json();
+                    } catch (e) {
+                      const text = await response.text();
+                      throw new Error(`Réponse non-JSON (${response.status}): ${text.substring(0, 50)}`);
+                    }
 
                     if (response.ok) {
                       const isOk = data.tokenSuccess && data.senderSet;
@@ -781,13 +787,14 @@ export default function AdminDashboard() {
                         type: isOk ? 'success' : 'error'
                       });
                     } else {
-                      throw new Error('Erreur lors de la vérification');
+                      throw new Error(`Erreur API (${response.status}): ${data?.error || 'Inconnu'}`);
                     }
                   } catch (err: any) {
+                    console.error('Check config error:', err);
                     setNotificationModal({
                       isOpen: true,
-                      title: 'Erreur',
-                      message: `Impossible de joindre le serveur de vérification.`,
+                      title: 'Erreur de Connexion',
+                      message: `Impossible de contacter l'API du serveur. Détails: ${err.message}`,
                       type: 'error'
                     });
                   } finally {
