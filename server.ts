@@ -15,18 +15,18 @@ async function startServer() {
   const PORT = 3000;
   
   // Explicitly detect production
-  const distPath = path.resolve(__dirname, 'dist');
-  const hasDist = existsSync(distPath);
-  const isProduction = process.env.NODE_ENV === "production" || hasDist;
+  const buildPath = path.resolve(__dirname, 'build-prod');
+  const hasBuild = existsSync(buildPath);
+  const isProduction = process.env.NODE_ENV === "production" || hasBuild;
 
   console.log(`[BOOT] Mode: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
-  console.log(`[BOOT] Dist exists: ${hasDist} at ${distPath}`);
+  console.log(`[BOOT] Build folder exists: ${hasBuild} at ${buildPath}`);
 
   app.use(express.json());
 
   // Log all requests for debugging
   app.use((req, res, next) => {
-    console.log(`[REQ] ${req.method} ${req.url} (isProd: ${isProduction})`);
+    console.log(`[REQ] ${req.method} ${req.url} (Mode: ${process.env.NODE_ENV})`);
     next();
   });
 
@@ -41,7 +41,8 @@ async function startServer() {
       status: "ok", 
       mode: process.env.NODE_ENV,
       isProduction,
-      hasDist,
+      hasBuild,
+      folder: buildPath,
       timestamp: new Date().toISOString()
     });
   });
@@ -148,15 +149,15 @@ async function startServer() {
   // STATIC SERVING
   // ==========================================
 
-  if (isProduction && hasDist) {
-    console.log("[SERVER] Serving production static files");
-    app.use(express.static(distPath));
+  if (isProduction && hasBuild) {
+    console.log(`[SERVER] Serving production static files from ${buildPath}`);
+    app.use(express.static(buildPath));
     app.get('*', (req, res) => {
       // Don't swallow API 404s
       if (req.url.startsWith('/api/')) {
         return res.status(404).json({ error: "API Route Not Found" });
       }
-      res.sendFile(path.join(distPath, 'index.html'));
+      res.sendFile(path.join(buildPath, 'index.html'));
     });
   } else {
     console.log("[SERVER] Starting Vite development server");
