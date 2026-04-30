@@ -768,9 +768,10 @@ export default function AdminDashboard() {
                   
                   try {
                     // 1. D'abord vérifier si le serveur répond
-                    const healthRes = await fetch('/server-health');
+                    const healthRes = await fetch('/api/health');
                     if (!healthRes.ok) {
-                      throw new Error(`Le serveur API ne répond pas (Status: ${healthRes.status})`);
+                      const text = await healthRes.text();
+                      throw new Error(`Le serveur API ne répond pas (Status: ${healthRes.status}). Contenu: ${text.substring(0, 30)}...`);
                     }
 
                     // 2. Vérifier la config Orange

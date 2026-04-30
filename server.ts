@@ -7,6 +7,8 @@ import { existsSync } from "fs";
 
 dotenv.config();
 
+console.log("[SERVER] Chargement du fichier server.ts...");
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
@@ -15,6 +17,15 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+
+  // Health routes at the very top
+  app.get("/server-health", (req, res) => {
+    res.json({ status: "ok", type: "server-health" });
+  });
+
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", type: "api-health" });
+  });
   
   // Request logger
   app.use((req, res, next) => {
@@ -63,19 +74,6 @@ async function startServer() {
       return null;
     }
   };
-
-  // Health check route
-  app.get("/server-health", (req, res) => {
-    res.json({ 
-      status: "ok", 
-      mode: process.env.NODE_ENV || "unknown", 
-      time: new Date().toISOString() 
-    });
-  });
-
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", mode: process.env.NODE_ENV || "unknown" });
-  });
 
   // Route to verify configuration without sending SMS
   app.get("/api/check-orange-config", async (req, res) => {
@@ -209,4 +207,7 @@ async function startServer() {
   });
 }
 
-startServer();
+startServer().catch(err => {
+  console.error("[SERVER] ÉCHEC CRITIQUE AU DÉMARRAGE:", err);
+  process.exit(1);
+});
