@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import { existsSync } from "fs";
 
 dotenv.config();
 
@@ -14,6 +15,12 @@ async function startServer() {
   const PORT = 3000;
 
   app.use(express.json());
+  
+  // Request logger
+  app.use((req, res, next) => {
+    console.log(`[${new Date().toISOString()}] MODE: ${process.env.NODE_ENV} | ${req.method} ${req.url}`);
+    next();
+  });
 
   // Orange API Auth Cache
   let orangeAccessToken: string | null = null;
@@ -58,8 +65,16 @@ async function startServer() {
   };
 
   // Health check route
+  app.get("/server-health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      mode: process.env.NODE_ENV || "unknown", 
+      time: new Date().toISOString() 
+    });
+  });
+
   app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", mode: process.env.NODE_ENV || "development" });
+    res.json({ status: "ok", mode: process.env.NODE_ENV || "unknown" });
   });
 
   // Route to verify configuration without sending SMS
@@ -169,8 +184,12 @@ async function startServer() {
     }
   });
 
-  // Vite middleware for development
-  if (process.env.NODE_ENV !== "production") {
+  // Improved production detection
+  const distPath = path.join(process.cwd(), 'dist');
+  const hasDist = existsSync(distPath);
+  const isProduction = process.env.NODE_ENV === "production" || (hasDist && process.env.NODE_ENV !== "development");
+
+  if (!isProduction) {
     console.log("[SERVER] Mode: DÉVELOPPEMENT (Vite Middleware)");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -179,7 +198,6 @@ async function startServer() {
     app.use(vite.middlewares);
   } else {
     console.log("[SERVER] Mode: PRODUCTION (Servir dist/)");
-    const distPath = path.join(process.cwd(), 'dist');
     app.use(express.static(distPath));
     app.get('*', (req, res) => {
       res.sendFile(path.join(distPath, 'index.html'));
@@ -187,7 +205,7 @@ async function startServer() {
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[SERVER] Serveur opérationnel sur http://0.0.0.0:${PORT}`);
+    console.log(`[SERVER] Serveur opérationnel sur http://0.0.0.0:${PORT} (Production: ${isProduction})`);
   });
 }
 

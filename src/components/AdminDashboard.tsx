@@ -768,7 +768,7 @@ export default function AdminDashboard() {
                   
                   try {
                     // 1. D'abord vérifier si le serveur répond
-                    const healthRes = await fetch('/api/health');
+                    const healthRes = await fetch('/server-health');
                     if (!healthRes.ok) {
                       throw new Error(`Le serveur API ne répond pas (Status: ${healthRes.status})`);
                     }
