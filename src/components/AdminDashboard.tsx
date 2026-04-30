@@ -772,7 +772,7 @@ export default function AdminDashboard() {
                     const pingText = await pingRes.text();
                     
                     if (!pingRes.ok || pingText !== 'pong') {
-                      throw new Error(`Le serveur ne répond pas au ping (Status: ${pingRes.status}). Réponse: ${pingText.substring(0, 30)}`);
+                      throw new Error(`Le serveur ne répond pas. Vérifiez que server.ts est bien démarré. (Status: ${pingRes.status})`);
                     }
 
                     // 2. Vérifier l'API health
@@ -788,8 +788,7 @@ export default function AdminDashboard() {
                     if (response.ok) {
                       // 3. Vérifier la config Orange
                       const configResponse = await fetch('/api/check-orange-config');
-                      const configText = await configResponse.text();
-                      const configData = JSON.parse(configText);
+                      const configData = await configResponse.json();
                       
                       const isOk = configData.tokenSuccess && configData.senderSet;
                       setNotificationModal({
@@ -797,7 +796,7 @@ export default function AdminDashboard() {
                         title: 'État de la Configuration',
                         message: isOk 
                           ? `Configuration Orange SMS OK ! Token: VALIDE, Expéditeur: ${configData.sender}`
-                          : `Configuration INCOMPLÈTE. Token: ${configData.tokenSuccess ? 'OK' : 'ERREUR'}, Expéditeur: ${configData.senderSet ? configData.sender : 'MANQUANT'}. Vérifiez vos variables d'environnement.`,
+                          : `Configuration INCOMPLÈTE. Token: ${configData.tokenSuccess ? 'OK' : 'ERREUR'}, Expéditeur: ${configData.senderSet ? configData.sender : 'MANQUANT'}.`,
                         type: isOk ? 'success' : 'error'
                       });
                     } else {

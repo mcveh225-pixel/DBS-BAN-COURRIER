@@ -7,216 +7,171 @@ import { existsSync } from "fs";
 
 dotenv.config();
 
-console.log("[SERVER] Chargement du fichier server.ts...");
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 async function startServer() {
   const app = express();
   const PORT = 3000;
+  
+  // Explicitly detect production
+  const distPath = path.resolve(__dirname, 'dist');
+  const hasDist = existsSync(distPath);
+  const isProduction = process.env.NODE_ENV === "production" || hasDist;
+
+  console.log(`[BOOT] Mode: ${isProduction ? 'PRODUCTION' : 'DEVELOPMENT'}`);
+  console.log(`[BOOT] Dist exists: ${hasDist} at ${distPath}`);
 
   app.use(express.json());
 
-  // SUPER EARLY LOGGER
+  // Log all requests for debugging
   app.use((req, res, next) => {
-    console.log(`[REQUEST] ${new Date().toISOString()} | ${req.method} ${req.url}`);
+    console.log(`[REQ] ${req.method} ${req.url} (isProd: ${isProduction})`);
     next();
   });
 
-  // Very simple routes to verify server is alive
-  app.get("/ping", (req, res) => {
-    res.send("pong");
-  });
+  // ==========================================
+  // API ROUTES
+  // ==========================================
+  
+  app.get("/ping", (req, res) => res.send("pong"));
 
-  app.get("/server-info", (req, res) => {
-    res.json({
-      env: process.env.NODE_ENV,
-      cwd: process.cwd(),
-      time: new Date().toISOString()
+  app.get("/api/health", (req, res) => {
+    res.json({ 
+      status: "ok", 
+      mode: process.env.NODE_ENV,
+      isProduction,
+      hasDist,
+      timestamp: new Date().toISOString()
     });
   });
 
-  // Health routes
-  app.get("/api/health", (req, res) => {
-    res.json({ status: "ok", type: "api-health" });
-  });
-
-  // Orange API Auth Cache
+  // Orange API Auth
   let orangeAccessToken: string | null = null;
   let tokenExpiry: number = 0;
 
   const getOrangeAccessToken = async () => {
-    if (orangeAccessToken && Date.now() < tokenExpiry) {
-      return orangeAccessToken;
-    }
+    if (orangeAccessToken && Date.now() < tokenExpiry) return orangeAccessToken;
 
     const clientId = process.env.ORANGE_CLIENT_ID;
     const clientSecret = process.env.ORANGE_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {
-      console.error("Orange API credentials missing in environment (ORANGE_CLIENT_ID or ORANGE_CLIENT_SECRET)");
+      console.error("[ORANGE] Missing ID/Secret in ENV");
       return null;
     }
 
     try {
-      const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
+      const authHeader = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
       const response = await fetch('https://api.orange.com/oauth/v3/token', {
         method: 'POST',
         headers: {
-          'Authorization': `Basic ${auth}`,
+          'Authorization': `Basic ${authHeader}`,
           'Content-Type': 'application/x-www-form-urlencoded'
         },
         body: 'grant_type=client_credentials'
       });
 
-      const data = await response.json() as any;
-      if (data.access_token) {
-        orangeAccessToken = data.access_token;
-        tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
-        return orangeAccessToken;
+      if (!response.ok) {
+        const errText = await response.text();
+        console.error(`[ORANGE] Auth failed (${response.status}): ${errText}`);
+        return null;
       }
-      console.error('Orange API Token Error:', data);
-      return null;
-    } catch (error) {
-      console.error('Error getting Orange token:', error);
+
+      const data = await response.json() as any;
+      orangeAccessToken = data.access_token;
+      tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
+      return orangeAccessToken;
+    } catch (e) {
+      console.error("[ORANGE] Fetch error:", e);
       return null;
     }
   };
 
-  // Route to verify configuration without sending SMS
   app.get("/api/check-orange-config", async (req, res) => {
-    const orangeSender = process.env.ORANGE_SENDER; 
-    const clientId = process.env.ORANGE_CLIENT_ID;
-    const clientSecret = process.env.ORANGE_CLIENT_SECRET;
+    console.log("[ORANGE] Checking config...");
     const token = await getOrangeAccessToken();
-    
     res.json({
-      senderSet: !!orangeSender,
+      senderSet: !!process.env.ORANGE_SENDER,
       tokenSuccess: !!token,
-      hasClientId: !!clientId,
-      hasClientSecret: !!clientSecret,
-      sender: orangeSender || 'NON CONFIGURÉ'
+      sender: process.env.ORANGE_SENDER || 'NON_CONFIGURÉ',
+      mode: process.env.NODE_ENV
     });
   });
 
-  // API Route for sending SMS
   app.post("/api/send-sms", async (req, res) => {
     const { phone, message } = req.body;
-
-    if (!phone || !message) {
-      return res.status(400).json({ error: "Phone and message are required" });
-    }
-
-    const orangeSenderRaw = process.env.ORANGE_SENDER; 
-    const clientId = process.env.ORANGE_CLIENT_ID;
-    const clientSecret = process.env.ORANGE_CLIENT_SECRET;
     const token = await getOrangeAccessToken();
+    const senderAddress = process.env.ORANGE_SENDER;
 
-    // Debug logging (partial info for security)
-    console.log(`[SMS AUTH CHECK] ClientID: ${clientId ? clientId.substring(0, 4) + '...' : 'MISSING'}, Sender: ${orangeSenderRaw ? 'Set' : 'MISSING'}, Token: ${token ? 'Success' : 'FAILED'}`);
-
-    if (!token || !orangeSenderRaw) {
-      return res.status(500).json({ 
-        error: "Orange API configuration incomplete", 
-        details: { 
-          senderSet: !!orangeSenderRaw, 
-          tokenSuccess: !!token,
-          hasClientId: !!clientId,
-          hasClientSecret: !!clientSecret
-        }
-      });
+    if (!token || !senderAddress) {
+      return res.status(500).json({ error: "Configuration Orange incomplète" });
     }
 
     try {
-      // Nettoyage et formatage du Sender (tel:+225XXXXXXXX)
-      let orangeSender = orangeSenderRaw.trim();
-      if (!orangeSender.startsWith('tel:')) {
-        let phoneOnly = orangeSender.replace(/^tel:/, '').replace(/\s/g, '');
-        if (!phoneOnly.startsWith('+')) {
-          phoneOnly = `+${phoneOnly}`;
-        }
-        orangeSender = `tel:${phoneOnly}`;
-      }
-
-      // Nettoyage et formatage du Destinataire (tel:+225XXXXXXXX)
-      let cleanedRecipient = phone.trim().replace(/[^\d+]/g, ''); // Garde seulement chiffres et +
+      let cleaned = phone.trim().replace(/[^\d+]/g, '');
+      if (cleaned.length === 10 && !cleaned.startsWith('+')) cleaned = `+225${cleaned}`;
+      else if (!cleaned.startsWith('+')) cleaned = `+${cleaned}`;
       
-      // Si c'est un numéro local CI à 10 chiffres (ex: 07...)
-      if (cleanedRecipient.length === 10 && !cleanedRecipient.startsWith('+')) {
-        cleanedRecipient = `+225${cleanedRecipient}`;
-      } else if (!cleanedRecipient.startsWith('+') && cleanedRecipient.length > 0) {
-        cleanedRecipient = `+${cleanedRecipient}`;
-      }
-      
-      const receiverAddress = `tel:${cleanedRecipient}`;
-      const encodedSender = encodeURIComponent(orangeSender);
+      const receiverHeader = `tel:${cleaned}`;
+      const senderEncoded = encodeURIComponent(senderAddress);
 
-      console.log(`[ORANGE] Tentative d'envoi de ${orangeSender} vers ${receiverAddress}`);
-
-      const body = {
-        outboundSMSMessageRequest: {
-          address: [receiverAddress], // L'API Orange attend un tableau ici
-          senderAddress: orangeSender,
-          outboundSMSTextMessage: {
-            message: message
-          }
-        }
-      };
-
-      const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${encodedSender}/requests`, {
+      const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${senderEncoded}/requests`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify(body)
+        body: JSON.stringify({
+          outboundSMSMessageRequest: {
+            address: [receiverHeader],
+            senderAddress: senderAddress,
+            outboundSMSTextMessage: { message }
+          }
+        })
       });
 
       if (response.ok) {
-        console.log(`[ORANGE] SMS Envoyé avec succès à ${cleanedRecipient}`);
-        return res.json({ success: true, recipient: cleanedRecipient });
+        res.json({ success: true });
       } else {
-        const errorData = await response.json();
-        console.error('[ORANGE] Erreur API lors de l\'envoi:', JSON.stringify(errorData));
-        return res.status(response.status).json({ 
-          error: "Orange API Error", 
-          details: errorData,
-          attemptedRecipient: cleanedRecipient 
-        });
+        const err = await response.json();
+        console.error("[ORANGE] Send failed:", err);
+        res.status(response.status).json({ error: "API Orange error", details: err });
       }
-    } catch (error) {
-      console.error('Error sending SMS:', error);
-      return res.status(500).json({ error: "Internal Server Error" });
+    } catch (e: any) {
+      console.error("[ORANGE] Exception:", e);
+      res.status(500).json({ error: e.message });
     }
   });
 
-  // Improved production detection
-  const distPath = path.join(process.cwd(), 'dist');
-  const hasDist = existsSync(distPath);
-  const isProduction = process.env.NODE_ENV === "production" || (hasDist && process.env.NODE_ENV !== "development");
+  // ==========================================
+  // STATIC SERVING
+  // ==========================================
 
-  if (!isProduction) {
-    console.log("[SERVER] Mode: DÉVELOPPEMENT (Vite Middleware)");
+  if (isProduction && hasDist) {
+    console.log("[SERVER] Serving production static files");
+    app.use(express.static(distPath));
+    app.get('*', (req, res) => {
+      // Don't swallow API 404s
+      if (req.url.startsWith('/api/')) {
+        return res.status(404).json({ error: "API Route Not Found" });
+      }
+      res.sendFile(path.join(distPath, 'index.html'));
+    });
+  } else {
+    console.log("[SERVER] Starting Vite development server");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
-  } else {
-    console.log("[SERVER] Mode: PRODUCTION (Servir dist/)");
-    app.use(express.static(distPath));
-    app.get('*', (req, res) => {
-      res.sendFile(path.join(distPath, 'index.html'));
-    });
   }
 
   app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[SERVER] Serveur opérationnel sur http://0.0.0.0:${PORT} (Production: ${isProduction})`);
+    console.log(`[READY] Listening on port ${PORT}`);
   });
 }
 
-startServer().catch(err => {
-  console.error("[SERVER] ÉCHEC CRITIQUE AU DÉMARRAGE:", err);
-  process.exit(1);
+startServer().catch((err) => {
+  console.error("[CRITICAL] Server failed to start:", err);
 });
