@@ -43,7 +43,12 @@ async function startServer() {
       isProduction,
       hasBuild,
       folder: buildPath,
-      timestamp: new Date().toISOString()
+      timestamp: new Date().toISOString(),
+      env_check: {
+        id: !!process.env.ORANGE_CLIENT_ID,
+        secret: !!process.env.ORANGE_CLIENT_SECRET,
+        sender: !!process.env.ORANGE_SENDER
+      }
     });
   });
 
@@ -168,11 +173,23 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`[READY] Listening on port ${PORT}`);
+  // Export for Vercel
+  return app;
+}
+
+// Start server
+const isVercel = process.env.VERCEL === '1' || !!process.env.VERCEL;
+
+if (!isVercel) {
+  startServer().then(app => {
+    const PORT = 3000;
+    app.listen(PORT, "0.0.0.0", () => {
+      console.log(`[READY] Listening on port ${PORT}`);
+    });
+  }).catch((err) => {
+    console.error("[CRITICAL] Server failed to start:", err);
   });
 }
 
-startServer().catch((err) => {
-  console.error("[CRITICAL] Server failed to start:", err);
-});
+// Export for Vercel Serverless
+export default startServer();
