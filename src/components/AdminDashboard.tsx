@@ -767,42 +767,48 @@ export default function AdminDashboard() {
                   setIsCheckingConfig(true);
                   
                   try {
-                    // 1. D'abord vérifier si le serveur répond
-                    const healthRes = await fetch('/api/health');
-                    if (!healthRes.ok) {
-                      const text = await healthRes.text();
-                      throw new Error(`Le serveur API ne répond pas (Status: ${healthRes.status}). Contenu: ${text.substring(0, 30)}...`);
+                    // 1. D'abord vérifier si le serveur répond au ping
+                    const pingRes = await fetch('/ping');
+                    const pingText = await pingRes.text();
+                    
+                    if (!pingRes.ok || pingText !== 'pong') {
+                      throw new Error(`Le serveur ne répond pas au ping (Status: ${pingRes.status}). Réponse: ${pingText.substring(0, 30)}`);
                     }
 
-                    // 2. Vérifier la config Orange
-                    const response = await fetch('/api/check-orange-config');
+                    // 2. Vérifier l'API health
+                    const response = await fetch('/api/health');
                     const text = await response.text();
                     let data;
                     try {
                       data = JSON.parse(text);
                     } catch (e) {
-                      throw new Error(`Réponse non-JSON du serveur: ${text.substring(0, 50)}`);
+                      throw new Error(`Réponse non-JSON de /api/health: ${text.substring(0, 50)}`);
                     }
 
                     if (response.ok) {
-                      const isOk = data.tokenSuccess && data.senderSet;
+                      // 3. Vérifier la config Orange
+                      const configResponse = await fetch('/api/check-orange-config');
+                      const configText = await configResponse.text();
+                      const configData = JSON.parse(configText);
+                      
+                      const isOk = configData.tokenSuccess && configData.senderSet;
                       setNotificationModal({
                         isOpen: true,
                         title: 'État de la Configuration',
                         message: isOk 
-                          ? `Configuration Orange SMS OK ! Token: VALIDE, Expéditeur: ${data.sender}`
-                          : `Configuration INCOMPLÈTE. Token: ${data.tokenSuccess ? 'OK' : 'ERREUR'}, Expéditeur: ${data.senderSet ? data.sender : 'MANQUANT'}. Vérifiez vos variables d'environnement.`,
+                          ? `Configuration Orange SMS OK ! Token: VALIDE, Expéditeur: ${configData.sender}`
+                          : `Configuration INCOMPLÈTE. Token: ${configData.tokenSuccess ? 'OK' : 'ERREUR'}, Expéditeur: ${configData.senderSet ? configData.sender : 'MANQUANT'}. Vérifiez vos variables d'environnement.`,
                         type: isOk ? 'success' : 'error'
                       });
                     } else {
-                      throw new Error(`Erreur API (${response.status}): ${data?.error || 'Inconnu'}`);
+                      throw new Error(`Erreur API Health (${response.status}): ${data?.error || 'Inconnu'}`);
                     }
                   } catch (err: any) {
                     console.error('Check config error:', err);
                     setNotificationModal({
                       isOpen: true,
                       title: 'Erreur de Connexion',
-                      message: `Impossible de contacter l'API du serveur. Détails: ${err.message}`,
+                      message: `Impossible de contacter le serveur. Détails: ${err.message}`,
                       type: 'error'
                     });
                   } finally {

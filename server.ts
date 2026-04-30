@@ -18,19 +18,28 @@ async function startServer() {
 
   app.use(express.json());
 
-  // Health routes at the very top
-  app.get("/server-health", (req, res) => {
-    res.json({ status: "ok", type: "server-health" });
+  // SUPER EARLY LOGGER
+  app.use((req, res, next) => {
+    console.log(`[REQUEST] ${new Date().toISOString()} | ${req.method} ${req.url}`);
+    next();
   });
 
+  // Very simple routes to verify server is alive
+  app.get("/ping", (req, res) => {
+    res.send("pong");
+  });
+
+  app.get("/server-info", (req, res) => {
+    res.json({
+      env: process.env.NODE_ENV,
+      cwd: process.cwd(),
+      time: new Date().toISOString()
+    });
+  });
+
+  // Health routes
   app.get("/api/health", (req, res) => {
     res.json({ status: "ok", type: "api-health" });
-  });
-  
-  // Request logger
-  app.use((req, res, next) => {
-    console.log(`[${new Date().toISOString()}] MODE: ${process.env.NODE_ENV} | ${req.method} ${req.url}`);
-    next();
   });
 
   // Orange API Auth Cache
