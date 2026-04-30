@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2, ChevronLeft } from 'lucide-react';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2, ChevronLeft, Bell, AlertCircle } from 'lucide-react';
 import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel, deleteParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
@@ -15,10 +15,11 @@ interface CourierDashboardProps {
 }
 
 export default function CourierDashboard({ user }: CourierDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'parcels' | 'create' | 'bilan'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'parcels' | 'create' | 'bilan' | 'notifications'>('overview');
   const [stats, setStats] = useState<any>(null);
   const [allParcels, setAllParcels] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
+  const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
@@ -72,6 +73,10 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     setStats(statsData);
     setAllParcels(parcelsData);
     setUsers(usersData);
+    
+    // Load notification logs
+    const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
+    setNotificationLogs(logs);
   };
 
   useEffect(() => {
@@ -410,6 +415,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             { key: 'overview', label: 'Tableau de bord', icon: Package },
             { key: 'parcels', label: 'Tous les colis', icon: Package },
             { key: 'bilan', label: 'Mon Bilan', icon: BarChart3 },
+            { key: 'notifications', label: 'SMS Envoyés', icon: Bell },
             { key: 'create', label: 'Nouveau colis', icon: Plus }
           ].map((tab) => (
             <button
@@ -763,6 +769,57 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           </div>
         </div>
       )}
+
+      {activeTab === 'notifications' && (
+        <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+          <div className="flex justify-between items-center mb-6">
+            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+              <Bell className="w-5 h-5 text-yellow-400" />
+              Historique des SMS
+            </h3>
+          </div>
+          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+            {notificationLogs.length > 0 ? (
+              notificationLogs.map((log: any, idx) => (
+                <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-2 rounded-lg ${
+                      log.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                      log.status === 'real' ? 'bg-green-500/20 text-green-400' :
+                      'bg-blue-500/20 text-blue-400'
+                    }`}>
+                      {log.status === 'error' ? <AlertCircle className="w-5 h-5" /> : 
+                       log.status === 'real' ? <CheckCircle className="w-5 h-5" /> : 
+                       <Package className="w-5 h-5 opacity-50" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-bold">{log.action}</span>
+                        {log.status === 'simulated' && (
+                          <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 font-black uppercase">Simulé</span>
+                        )}
+                        {log.status === 'real' && (
+                          <span className="text-[10px] bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded border border-green-500/20 font-black uppercase tracking-tighter">Réel</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">{log.timestamp}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-300 font-mono">{log.phone}</p>
+                    <p className="text-[10px] text-gray-500">Colis: {log.parcelCode}</p>
+                  </div>
+                </div>
+              ))
+            ) : (
+              <div className="text-center py-12 text-gray-500 italic">
+                Aucun SMS envoyé pour le moment.
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
       {revenueBreakdownModal.isOpen && (
         <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50">
           <div className="bg-[#1a1c2e] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl">

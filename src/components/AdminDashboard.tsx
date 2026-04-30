@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell } from 'lucide-react';
-import { getUsers, getParcels, createCourierUser, createAdminUser, deleteUser, archiveUser, getDailyRevenues, getCourierDailyStats, getCurrentUser, getDisplayStatus, getStatusColor, Parcel } from '../lib/auth';
+import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell, CheckCircle, AlertCircle } from 'lucide-react';
+import { 
+  getUsers, 
+  getParcels, 
+  createCourierUser, 
+  createAdminUser, 
+  deleteUser, 
+  archiveUser, 
+  getDailyRevenues, 
+  getCourierDailyStats, 
+  getCurrentUser, 
+  getDisplayStatus, 
+  getStatusColor, 
+  Parcel
+} from '../lib/auth';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { sendSMS } from '../lib/notifications';
 import CreateCourierModal from './CreateCourierModal';
@@ -20,7 +33,7 @@ export default function AdminDashboard() {
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications'>('overview');
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
-  const [notificationLogs, setNotificationLogs] = useState<string[]>([]);
+  const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
   const [courierStats, setCourierStats] = useState<Record<string, any>>({});
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [breakdownModal, setBreakdownModal] = useState<{
@@ -87,6 +100,7 @@ export default function AdminDashboard() {
   const courierUsers = users.filter(u => u.role === 'courier');
 
   const todayUTC = new Date().toISOString().split('T')[0];
+  
   const todayRevenue = parcels
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.split('T')[0] === todayUTC)
     .reduce((sum, p) => sum + p.price, 0);
@@ -125,24 +139,12 @@ export default function AdminDashboard() {
   const tenDayPeriod = getCurrentTenDayPeriod();
   const currentMonthUTC = new Date().toISOString().slice(0, 7);
   
-  // Calculate annual revenue with a reset on May 1st, 2026
-  const getAnnualRevenueStart = () => {
-    const now = new Date();
-    const resetDate = new Date('2026-05-01');
-    if (now >= resetDate) {
-      return '2026-05-01';
-    }
-    return `${now.getFullYear()}-01-01`;
-  };
-
-  const annualRevenueStart = getAnnualRevenueStart();
-
   const monthlyRevenue = parcels
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentMonthUTC))
     .reduce((sum, p) => sum + p.price, 0);
 
   const totalRevenue = parcels
-    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt >= annualRevenueStart)
+    .filter(p => p.isPaid && p.status !== 'ANNULE')
     .reduce((sum, p) => sum + p.price, 0);
 
   const tenDayRevenue = parcels
@@ -460,8 +462,7 @@ export default function AdminDashboard() {
           const userYearlyParcels = parcels.filter(p => 
             p.createdBy === u.id && 
             p.isPaid && 
-            p.status !== 'ANNULE' && 
-            p.createdAt >= annualRevenueStart
+            p.status !== 'ANNULE'
           );
           const revenue = userYearlyParcels.reduce((sum, p) => sum + p.price, 0);
           return {
@@ -495,7 +496,7 @@ export default function AdminDashboard() {
             { key: 'couriers', label: 'Utilisateurs', icon: Users },
             { key: 'parcels', label: 'Colis', icon: Package },
             { key: 'revenue', label: 'Revenus', icon: DollarSign },
-            { key: 'notifications', label: 'Notifications', icon: Bell }
+            { key: 'notifications', label: 'SMS Envoyés', icon: Bell }
           ].map((tab) => (
             <button
               key={tab.key}
@@ -727,7 +728,7 @@ export default function AdminDashboard() {
           <div className="flex justify-between items-center mb-6">
             <h3 className="text-lg font-semibold text-white flex items-center gap-2">
               <Bell className="w-5 h-5 text-yellow-400" />
-              Historique des Notifications
+              Historique des SMS
             </h3>
             <div className="flex gap-2">
               <button 
@@ -756,11 +757,37 @@ export default function AdminDashboard() {
               </button>
             </div>
           </div>
-          <div className="space-y-2 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
+          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
             {notificationLogs.length > 0 ? (
-              notificationLogs.map((log, idx) => (
-                <div key={idx} className="bg-white/5 border border-white/5 rounded-lg p-3 text-sm text-gray-300 font-mono">
-                  {log}
+              notificationLogs.map((log: any, idx) => (
+                <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
+                  <div className="flex items-center gap-4">
+                    <div className={`p-2 rounded-lg ${
+                      log.status === 'error' ? 'bg-red-500/20 text-red-400' :
+                      log.status === 'real' ? 'bg-green-500/20 text-green-400' :
+                      'bg-blue-500/20 text-blue-400'
+                    }`}>
+                      {log.status === 'error' ? <AlertCircle className="w-5 h-5" /> : 
+                       log.status === 'real' ? <CheckCircle className="w-5 h-5" /> : 
+                       <Package className="w-5 h-5 opacity-50" />}
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-white font-bold">{log.action}</span>
+                        {log.status === 'simulated' && (
+                          <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 font-black uppercase">Simulé</span>
+                        )}
+                        {log.status === 'real' && (
+                          <span className="text-[10px] bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded border border-green-500/20 font-black uppercase tracking-tighter">API Réelle</span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-gray-500 mt-0.5">{log.timestamp}</p>
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-sm text-gray-300 font-mono">{log.phone}</p>
+                    <p className="text-[10px] text-gray-500">Colis: {log.parcelCode}</p>
+                  </div>
                 </div>
               ))
             ) : (

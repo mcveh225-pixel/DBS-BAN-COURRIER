@@ -264,12 +264,42 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
                 <div className="flex items-center justify-between text-[10px] font-black uppercase tracking-widest text-gray-500 px-1">
                   <span>Audit Trail</span>
                 </div>
-                <div className="text-[10px] text-gray-500 space-y-2">
-                  <div className="flex justify-between">
-                    <span>Création</span>
-                    <span className="text-gray-300">{new Date(parcel.createdAt).toLocaleDateString()}</span>
+                <div className="text-[10px] text-gray-500 space-y-3">
+                  <div className="flex justify-between items-center bg-white/5 p-2 rounded-lg">
+                    <span className="flex items-center gap-2"><Calendar className="w-3 h-3" /> Enregistrement</span>
+                    <span className="text-gray-300 font-bold">
+                      {new Date(parcel.createdAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                    </span>
                   </div>
-                  <div className="flex justify-between">
+                  
+                  {parcel.shippedAt && (
+                    <div className="flex justify-between items-center bg-indigo-500/10 p-2 rounded-lg border border-indigo-500/20">
+                      <span className="flex items-center gap-2 text-indigo-400"><Send className="w-3 h-3" /> Expédition</span>
+                      <span className="text-indigo-300 font-bold">
+                        {new Date(parcel.shippedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
+
+                  {parcel.arrivedAt && (
+                    <div className="flex justify-between items-center bg-orange-500/10 p-2 rounded-lg border border-orange-500/20">
+                      <span className="flex items-center gap-2 text-orange-400"><Truck className="w-3 h-3" /> Arrivée en Gare</span>
+                      <span className="text-orange-300 font-bold">
+                        {new Date(parcel.arrivedAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
+
+                  {parcel.deliveredAt && (
+                    <div className="flex justify-between items-center bg-emerald-500/10 p-2 rounded-lg border border-emerald-500/20">
+                      <span className="flex items-center gap-2 text-emerald-400"><CheckCircle className="w-3 h-3" /> Livraison</span>
+                      <span className="text-emerald-300 font-bold">
+                        {new Date(parcel.deliveredAt).toLocaleString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    </div>
+                  )}
+                  
+                  <div className="pt-2 flex justify-between">
                     <span>ID Interne</span>
                     <span className="text-gray-400 font-mono truncate ml-4">{parcel.id}</span>
                   </div>

@@ -27,6 +27,7 @@ export interface Parcel {
   price: number;
   isPaid: boolean;
   paidAt?: string;
+  shippedAt?: string;
   arrivedAt?: string;
   deliveredAt?: string;
   createdBy: string;
@@ -100,6 +101,7 @@ const mapParcel = (dbParcel: any): Parcel => ({
   price: dbParcel.price,
   isPaid: dbParcel.is_paid,
   paidAt: dbParcel.paid_at,
+  shippedAt: dbParcel.shipped_at,
   arrivedAt: dbParcel.arrived_at,
   deliveredAt: dbParcel.delivered_at,
   createdBy: dbParcel.created_by,
@@ -498,6 +500,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.isPaid !== undefined) dbUpdates.is_paid = updates.isPaid;
     if (updates.paidAt) dbUpdates.paid_at = updates.paidAt;
+    if (updates.shippedAt) dbUpdates.shipped_at = updates.shippedAt;
     if (updates.arrivedAt) dbUpdates.arrived_at = updates.arrivedAt;
     if (updates.deliveredAt) dbUpdates.delivered_at = updates.deliveredAt;
     
@@ -553,6 +556,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
         if (updates.status === 'EXPEDIE') {
           message = createParcelShippedMessage(current.code, current.destination_city);
           action = 'SMS Expédition';
+          dbUpdates.shipped_at = new Date().toISOString();
         } else if (updates.status === 'ARRIVE') {
           message = createParcelArrivedMessage(current.code);
           action = 'SMS Arrivée';
@@ -669,6 +673,7 @@ export const getCourierDailyStats = async (courierId: string) => {
         .from('parcels')
         .select('*', { count: 'exact', head: true })
         .eq('destination_city', city)
+        .gte('created_at', `${today}T00:00:00.000Z`)
         .in('status', ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE']);
       destinedCount = count || 0;
     }
