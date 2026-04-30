@@ -476,11 +476,23 @@ export default function AdminDashboard() {
     }
   ];
 
+  const handleStatusUpdate = async (parcelId: string, newStatus: Parcel['status']) => {
+    const updates: Partial<Parcel> = { status: newStatus };
+    const updated = await updateParcel(parcelId, updates);
+    if (updated) {
+      loadData();
+      if (selectedParcel?.id === parcelId) {
+        setSelectedParcel(updated);
+      }
+    }
+  };
+
   if (selectedParcel) {
     return (
       <ParcelDetailsModal
         parcel={selectedParcel}
         onBack={() => setSelectedParcel(null)}
+        onStatusUpdate={handleStatusUpdate}
         userId={currentUser?.id}
         userCity=""
       />
