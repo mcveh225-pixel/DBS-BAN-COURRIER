@@ -57,6 +57,11 @@ async function startServer() {
     }
   };
 
+  // Health check route
+  app.get("/api/health", (req, res) => {
+    res.json({ status: "ok", mode: process.env.NODE_ENV || "development" });
+  });
+
   // Route to verify configuration without sending SMS
   app.get("/api/check-orange-config", async (req, res) => {
     const orangeSender = process.env.ORANGE_SENDER; 
@@ -113,11 +118,12 @@ async function startServer() {
       }
 
       // Nettoyage et formatage du Destinataire (tel:+225XXXXXXXX)
-      let cleanedRecipient = phone.trim().replace(/\s/g, '');
-      // Si c'est un numéro local à 10 chiffres, on ajoute le préfixe +225
+      let cleanedRecipient = phone.trim().replace(/[^\d+]/g, ''); // Garde seulement chiffres et +
+      
+      // Si c'est un numéro local CI à 10 chiffres (ex: 07...)
       if (cleanedRecipient.length === 10 && !cleanedRecipient.startsWith('+')) {
         cleanedRecipient = `+225${cleanedRecipient}`;
-      } else if (!cleanedRecipient.startsWith('+')) {
+      } else if (!cleanedRecipient.startsWith('+') && cleanedRecipient.length > 0) {
         cleanedRecipient = `+${cleanedRecipient}`;
       }
       
@@ -126,21 +132,23 @@ async function startServer() {
 
       console.log(`[ORANGE] Tentative d'envoi de ${orangeSender} vers ${receiverAddress}`);
 
+      const body = {
+        outboundSMSMessageRequest: {
+          address: [receiverAddress], // L'API Orange attend un tableau ici
+          senderAddress: orangeSender,
+          outboundSMSTextMessage: {
+            message: message
+          }
+        }
+      };
+
       const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${encodedSender}/requests`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
-        body: JSON.stringify({
-          outboundSMSMessageRequest: {
-            address: receiverAddress,
-            senderAddress: orangeSender,
-            outboundSMSTextMessage: {
-              message: message
-            }
-          }
-        })
+        body: JSON.stringify(body)
       });
 
       if (response.ok) {

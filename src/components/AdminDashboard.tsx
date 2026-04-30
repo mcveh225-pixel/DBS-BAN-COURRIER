@@ -767,13 +767,20 @@ export default function AdminDashboard() {
                   setIsCheckingConfig(true);
                   
                   try {
+                    // 1. D'abord vérifier si le serveur répond
+                    const healthRes = await fetch('/api/health');
+                    if (!healthRes.ok) {
+                      throw new Error(`Le serveur API ne répond pas (Status: ${healthRes.status})`);
+                    }
+
+                    // 2. Vérifier la config Orange
                     const response = await fetch('/api/check-orange-config');
+                    const text = await response.text();
                     let data;
                     try {
-                      data = await response.json();
+                      data = JSON.parse(text);
                     } catch (e) {
-                      const text = await response.text();
-                      throw new Error(`Réponse non-JSON (${response.status}): ${text.substring(0, 50)}`);
+                      throw new Error(`Réponse non-JSON du serveur: ${text.substring(0, 50)}`);
                     }
 
                     if (response.ok) {
