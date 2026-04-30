@@ -24,17 +24,17 @@ async function startServer() {
       return orangeAccessToken;
     }
 
-    const clientId = process.env.VITE_ORANGE_CLIENT_ID;
-    const clientSecret = process.env.VITE_ORANGE_CLIENT_SECRET;
+    const clientId = process.env.ORANGE_CLIENT_ID;
+    const clientSecret = process.env.ORANGE_CLIENT_SECRET;
 
     if (!clientId || !clientSecret) {
-      console.error("Orange API credentials missing in environment");
+      console.error("Orange API credentials missing in environment (ORANGE_CLIENT_ID or ORANGE_CLIENT_SECRET)");
       return null;
     }
 
     try {
       const auth = Buffer.from(`${clientId}:${clientSecret}`).toString('base64');
-      const response = await fetch('https://api.orange.com/oauth/v2/token', {
+      const response = await fetch('https://api.orange.com/oauth/v3/token', {
         method: 'POST',
         headers: {
           'Authorization': `Basic ${auth}`,
@@ -49,6 +49,7 @@ async function startServer() {
         tokenExpiry = Date.now() + (data.expires_in * 1000) - 60000;
         return orangeAccessToken;
       }
+      console.error('Orange API Token Error:', data);
       return null;
     } catch (error) {
       console.error('Error getting Orange token:', error);
@@ -64,19 +65,26 @@ async function startServer() {
       return res.status(400).json({ error: "Phone and message are required" });
     }
 
-    const senderNumber = process.env.VITE_ORANGE_SENDER_NUMBER;
+    const orangeSender = process.env.ORANGE_SENDER; // Format: tel:+225XXXXXXXX
     const token = await getOrangeAccessToken();
 
-    if (!token || !senderNumber) {
-      console.log(`[SERVER SIMULATION] SMS to ${phone}: ${message}`);
-      return res.json({ success: true, simulated: true });
+    if (!token || !orangeSender) {
+      console.log(`[SMS CONFIG MISSING] Would send to ${phone}: ${message}`);
+      return res.status(500).json({ 
+        error: "Orange API configuration missing", 
+        simulated: true 
+      });
     }
 
     try {
-      const senderAddress = `tel:+${senderNumber}`;
-      const receiverAddress = `tel:+${phone}`;
+      // Ensure phone has the correct format for Orange (e.g., +225XXXXXXXX)
+      const formattedRecipient = phone.startsWith('+') ? phone : `+${phone}`;
+      const receiverAddress = `tel:${formattedRecipient}`;
+      
+      // Encode the sender address for the URL
+      const encodedSender = encodeURIComponent(orangeSender);
 
-      const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${encodeURIComponent(senderAddress)}/requests`, {
+      const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${encodedSender}/requests`, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${token}`,
@@ -85,7 +93,7 @@ async function startServer() {
         body: JSON.stringify({
           outboundSMSMessageRequest: {
             address: receiverAddress,
-            senderAddress: senderAddress,
+            senderAddress: orangeSender,
             outboundSMSTextMessage: {
               message: message
             }
@@ -94,10 +102,11 @@ async function startServer() {
       });
 
       if (response.ok) {
+        console.log(`SMS Sent successfully to ${phone}`);
         return res.json({ success: true });
       } else {
         const errorData = await response.json();
-        console.error('Orange API Error:', errorData);
+        console.error('Orange API Send Error:', errorData);
         return res.status(response.status).json({ error: "Orange API Error", details: errorData });
       }
     } catch (error) {
