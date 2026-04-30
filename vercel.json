@@ -14,21 +14,9 @@
     }
   ],
   "rewrites": [
-    {
-      "source": "/api/(.*)",
-      "destination": "/server.ts"
-    },
-    {
-      "source": "/ping",
-      "destination": "/server.ts"
-    },
-    {
-      "source": "/server-info",
-      "destination": "/server.ts"
-    },
-    {
-      "source": "/((?!api/|ping|server-info).*)",
-      "destination": "/build-prod/$1"
-    }
+    { "source": "/api/(.*)", "destination": "/server.ts" },
+    { "source": "/ping", "destination": "/server.ts" },
+    { "source": "/server-info", "destination": "/server.ts" },
+    { "source": "/(.*)", "destination": "/build-prod/$1" }
   ]
 }
