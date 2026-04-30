@@ -65,17 +65,18 @@ export const sendSMS = async (phone: string, message: string): Promise<boolean> 
       if (data.simulated) {
         console.log(`📱 [SIMULATION] SMS envoyé à ${formattedPhone}:`, message);
         showNotification(`SMS simulé pour ${formattedPhone}`, 'info');
-        logNotification('SMS (Simulé)', formattedPhone, 'N/A');
+        logNotification('SMS (Simulé)', formattedPhone, 'N/A', 'info');
       } else {
         console.log(`📱 SMS Orange envoyé à ${formattedPhone}`);
         showNotification(`SMS envoyé à ${formattedPhone}`, 'success');
-        logNotification('SMS Expédié (Réel)', formattedPhone, 'OK');
+        logNotification('SMS Expédié (Réel)', formattedPhone, 'OK', 'success');
       }
       return true;
     } else {
       console.error('API Error:', data);
-      showNotification('Erreur lors de l\'envoi du SMS', 'error');
-      logNotification('Erreur SMS (Réel)', formattedPhone, 'FAIL');
+      const errorMsg = data.details?.message || data.error || 'Erreur inconnue';
+      showNotification(`Erreur SMS: ${errorMsg}`, 'error');
+      logNotification('Erreur SMS (Réel)', formattedPhone, errorMsg, 'error');
       return false;
     }
   } catch (error) {
@@ -152,7 +153,7 @@ export const createManualSMSMessage = (
   return `📦 DBS-BAN SERVICE COURRIER\ninfo expéditeur: ${senderName}\nInfo Colis: ${parcelCode}\nStatut: ${status}\nDestination: ${destination}\ninfo destinataire: ${recipientName}\nMerci de votre confiance !`;
 };
 
-export const logNotification = (action: string, phone: string, parcelCode: string) => {
+export const logNotification = (action: string, phone: string, parcelCode: string, forcedStatus?: 'real' | 'simulated' | 'error' | 'success' | 'info') => {
   const timestamp = new Date().toLocaleString('fr-FR');
   const isSimulated = action.toLowerCase().includes('simulé');
   const isError = action.toLowerCase().includes('erreur') || parcelCode === 'FAIL';
@@ -162,7 +163,7 @@ export const logNotification = (action: string, phone: string, parcelCode: strin
     action,
     phone,
     parcelCode,
-    status: isError ? 'error' : (isSimulated ? 'simulated' : 'real')
+    status: forcedStatus === 'success' ? 'real' : (forcedStatus === 'info' ? 'simulated' : (forcedStatus || (isError ? 'error' : (isSimulated ? 'simulated' : 'real'))))
   };
 
   const existingLogs = localStorage.getItem('notification_logs') || '[]';

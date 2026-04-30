@@ -57,6 +57,22 @@ async function startServer() {
     }
   };
 
+  // Route to verify configuration without sending SMS
+  app.get("/api/check-orange-config", async (req, res) => {
+    const orangeSender = process.env.ORANGE_SENDER; 
+    const clientId = process.env.ORANGE_CLIENT_ID;
+    const clientSecret = process.env.ORANGE_CLIENT_SECRET;
+    const token = await getOrangeAccessToken();
+    
+    res.json({
+      senderSet: !!orangeSender,
+      tokenSuccess: !!token,
+      hasClientId: !!clientId,
+      hasClientSecret: !!clientSecret,
+      sender: orangeSender || 'NON CONFIGURÉ'
+    });
+  });
+
   // API Route for sending SMS
   app.post("/api/send-sms", async (req, res) => {
     const { phone, message } = req.body;
@@ -65,24 +81,50 @@ async function startServer() {
       return res.status(400).json({ error: "Phone and message are required" });
     }
 
-    const orangeSender = process.env.ORANGE_SENDER; // Format: tel:+225XXXXXXXX
+    const orangeSenderRaw = process.env.ORANGE_SENDER; 
+    const clientId = process.env.ORANGE_CLIENT_ID;
+    const clientSecret = process.env.ORANGE_CLIENT_SECRET;
     const token = await getOrangeAccessToken();
 
-    if (!token || !orangeSender) {
-      console.log(`[SMS CONFIG MISSING] Would send to ${phone}: ${message}`);
+    // Debug logging (partial info for security)
+    console.log(`[SMS AUTH CHECK] ClientID: ${clientId ? clientId.substring(0, 4) + '...' : 'MISSING'}, Sender: ${orangeSenderRaw ? 'Set' : 'MISSING'}, Token: ${token ? 'Success' : 'FAILED'}`);
+
+    if (!token || !orangeSenderRaw) {
       return res.status(500).json({ 
-        error: "Orange API configuration missing", 
-        simulated: true 
+        error: "Orange API configuration incomplete", 
+        details: { 
+          senderSet: !!orangeSenderRaw, 
+          tokenSuccess: !!token,
+          hasClientId: !!clientId,
+          hasClientSecret: !!clientSecret
+        }
       });
     }
 
     try {
-      // Ensure phone has the correct format for Orange (e.g., +225XXXXXXXX)
-      const formattedRecipient = phone.startsWith('+') ? phone : `+${phone}`;
-      const receiverAddress = `tel:${formattedRecipient}`;
+      // Nettoyage et formatage du Sender (tel:+225XXXXXXXX)
+      let orangeSender = orangeSenderRaw.trim();
+      if (!orangeSender.startsWith('tel:')) {
+        let phoneOnly = orangeSender.replace(/^tel:/, '').replace(/\s/g, '');
+        if (!phoneOnly.startsWith('+')) {
+          phoneOnly = `+${phoneOnly}`;
+        }
+        orangeSender = `tel:${phoneOnly}`;
+      }
+
+      // Nettoyage et formatage du Destinataire (tel:+225XXXXXXXX)
+      let cleanedRecipient = phone.trim().replace(/\s/g, '');
+      // Si c'est un numéro local à 10 chiffres, on ajoute le préfixe +225
+      if (cleanedRecipient.length === 10 && !cleanedRecipient.startsWith('+')) {
+        cleanedRecipient = `+225${cleanedRecipient}`;
+      } else if (!cleanedRecipient.startsWith('+')) {
+        cleanedRecipient = `+${cleanedRecipient}`;
+      }
       
-      // Encode the sender address for the URL
+      const receiverAddress = `tel:${cleanedRecipient}`;
       const encodedSender = encodeURIComponent(orangeSender);
+
+      console.log(`[ORANGE] Tentative d'envoi de ${orangeSender} vers ${receiverAddress}`);
 
       const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${encodedSender}/requests`, {
         method: 'POST',
@@ -102,12 +144,16 @@ async function startServer() {
       });
 
       if (response.ok) {
-        console.log(`SMS Sent successfully to ${phone}`);
-        return res.json({ success: true });
+        console.log(`[ORANGE] SMS Envoyé avec succès à ${cleanedRecipient}`);
+        return res.json({ success: true, recipient: cleanedRecipient });
       } else {
         const errorData = await response.json();
-        console.error('Orange API Send Error:', errorData);
-        return res.status(response.status).json({ error: "Orange API Error", details: errorData });
+        console.error('[ORANGE] Erreur API lors de l\'envoi:', JSON.stringify(errorData));
+        return res.status(response.status).json({ 
+          error: "Orange API Error", 
+          details: errorData,
+          attemptedRecipient: cleanedRecipient 
+        });
       }
     } catch (error) {
       console.error('Error sending SMS:', error);

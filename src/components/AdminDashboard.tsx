@@ -154,6 +154,8 @@ export default function AdminDashboard() {
     
   const tenDayParcels = parcels.filter(p => p.createdAt.split('T')[0] >= tenDayPeriod.start && p.status !== 'ANNULE');
 
+  const [isCheckingConfig, setIsCheckingConfig] = useState(false);
+
   const handleCreateCourier = async (email: string, name: string, city: string, password?: string) => {
     try {
       const newUser = await createCourierUser(email, name, city, password);
@@ -759,6 +761,43 @@ export default function AdminDashboard() {
               Historique des SMS
             </h3>
             <div className="flex gap-2">
+              <button 
+                disabled={isCheckingConfig}
+                onClick={async () => {
+                  setIsCheckingConfig(true);
+                  
+                  try {
+                    const response = await fetch('/api/check-orange-config');
+                    const data = await response.json();
+
+                    if (response.ok) {
+                      const isOk = data.tokenSuccess && data.senderSet;
+                      setNotificationModal({
+                        isOpen: true,
+                        title: 'État de la Configuration',
+                        message: isOk 
+                          ? `Configuration Orange SMS OK ! Token: VALIDE, Expéditeur: ${data.sender}`
+                          : `Configuration INCOMPLÈTE. Token: ${data.tokenSuccess ? 'OK' : 'ERREUR'}, Expéditeur: ${data.senderSet ? data.sender : 'MANQUANT'}. Vérifiez vos variables d'environnement.`,
+                        type: isOk ? 'success' : 'error'
+                      });
+                    } else {
+                      throw new Error('Erreur lors de la vérification');
+                    }
+                  } catch (err: any) {
+                    setNotificationModal({
+                      isOpen: true,
+                      title: 'Erreur',
+                      message: `Impossible de joindre le serveur de vérification.`,
+                      type: 'error'
+                    });
+                  } finally {
+                    setIsCheckingConfig(false);
+                  }
+                }}
+                className="text-xs text-green-400 hover:text-green-300 transition-colors border border-green-400/30 px-2 py-1 rounded disabled:opacity-50"
+              >
+                {isCheckingConfig ? 'Vérification...' : 'Vérifier Config'}
+              </button>
               <button 
                 onClick={async () => {
                   const phone = prompt('Numéro de téléphone (ex: 0700000000):');
