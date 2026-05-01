@@ -38,7 +38,7 @@ const showNotification = (message: string, type: 'success' | 'error' | 'info') =
   }, 4000);
 };
 
-export const sendSMS = async (phone: string, message: string): Promise<boolean> => {
+export const sendSMS = async (phone: string, message: string, type: string = 'SYSTEM'): Promise<boolean> => {
   if (!phone || phone.length < 8) {
     console.warn('Invalid phone number:', phone);
     return false;
@@ -55,7 +55,8 @@ export const sendSMS = async (phone: string, message: string): Promise<boolean> 
       },
       body: JSON.stringify({
         phone: formattedPhone,
-        message: message
+        message: message,
+        type: type
       })
     });
 
@@ -172,4 +173,16 @@ export const logNotification = (action: string, phone: string, parcelCode: strin
   if (logs.length > 100) logs.splice(100);
   localStorage.setItem('notification_logs', JSON.stringify(logs));
   console.log(`[${timestamp}] ${action} - ${parcelCode} - ${phone}`);
+};
+
+export const getSMSLogs = async () => {
+  try {
+    const response = await fetch('/api/sms-logs');
+    if (response.ok) {
+      return await response.json();
+    }
+  } catch (error) {
+    console.error('Erreur lors de la récupération des logs SMS:', error);
+  }
+  return [];
 };

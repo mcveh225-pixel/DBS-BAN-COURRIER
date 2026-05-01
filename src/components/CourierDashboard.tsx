@@ -3,7 +3,7 @@ import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarCh
 import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel, deleteParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
-import { sendBothNotifications, sendSMS, createParcelShippedMessage, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification } from '../lib/notifications';
+import { sendBothNotifications, sendSMS, createParcelShippedMessage, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, getSMSLogs } from '../lib/notifications';
 import ParcelList from './ParcelList';
 import CreateParcelForm from './CreateParcelForm';
 import ParcelDetailsPage from './ParcelDetailsModal';
@@ -20,6 +20,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const [allParcels, setAllParcels] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
+  const [sharedSmsLogs, setSharedSmsLogs] = useState<any[]>([]);
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
@@ -74,9 +75,9 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     setAllParcels(parcelsData);
     setUsers(usersData);
     
-    // Load notification logs
-    const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
-    setNotificationLogs(logs);
+    // Load shared SMS logs from server
+    const sharedLogs = await getSMSLogs();
+    setSharedSmsLogs(sharedLogs);
   };
 
   useEffect(() => {
@@ -793,42 +794,32 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
               Historique des SMS
             </h3>
           </div>
-          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-            {notificationLogs.length > 0 ? (
-              notificationLogs.map((log: any, idx) => (
-                <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className={`p-2 rounded-lg ${
-                      log.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                      log.status === 'real' ? 'bg-green-500/20 text-green-400' :
-                      'bg-blue-500/20 text-blue-400'
-                    }`}>
-                      {log.status === 'error' ? <AlertCircle className="w-5 h-5" /> : 
-                       log.status === 'real' ? <CheckCircle className="w-5 h-5" /> : 
-                       <Package className="w-5 h-5 opacity-50" />}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-bold">{log.action}</span>
-                        {log.status === 'simulated' && (
-                          <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 font-black uppercase">Simulé</span>
-                        )}
-                        {log.status === 'real' && (
-                          <span className="text-[10px] bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded border border-green-500/20 font-black uppercase tracking-tighter">Réel</span>
-                        )}
+          <div className="space-y-3 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
+            {sharedSmsLogs.length > 0 ? (
+              sharedSmsLogs.map((log: any, idx) => (
+                <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 hover:bg-white/10 transition-all">
+                  <div className="flex justify-between items-start mb-2">
+                    <div className="flex items-center gap-3">
+                      <div className={`p-1.5 rounded-md ${
+                        log.status === 'ERROR' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+                      }`}>
+                        {log.status === 'ERROR' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
                       </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">{log.timestamp}</p>
+                      <div>
+                        <span className="text-white font-medium text-sm">{log.phone}</span>
+                        <span className="text-[10px] text-gray-500 ml-2">{new Date(log.timestamp).toLocaleString('fr-FR')}</span>
+                      </div>
                     </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded border border-gray-500/30 text-gray-400">
+                      {log.type}
+                    </span>
                   </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-300 font-mono">{log.phone}</p>
-                    <p className="text-[10px] text-gray-500">Colis: {log.parcelCode}</p>
-                  </div>
+                  <p className="text-gray-300 text-sm italic">"{log.message}"</p>
                 </div>
               ))
             ) : (
               <div className="text-center py-12 text-gray-500 italic">
-                Aucun SMS envoyé pour le moment.
+                Aucun historique d'envoi partagé.
               </div>
             )}
           </div>

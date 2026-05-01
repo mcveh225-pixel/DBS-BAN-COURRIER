@@ -16,7 +16,15 @@ import {
   updateParcel
 } from '../lib/auth';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
-import { sendSMS, sendBothNotifications, createParcelShippedMessage, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification } from '../lib/notifications';
+import { 
+  sendSMS, 
+  sendBothNotifications, 
+  createParcelShippedMessage, 
+  createParcelArrivedMessage, 
+  createParcelDeliveredMessage, 
+  logNotification,
+  getSMSLogs 
+} from '../lib/notifications';
 import CreateCourierModal from './CreateCourierModal';
 import CreateAdminModal from './CreateAdminModal';
 import ParcelList from './ParcelList';
@@ -35,6 +43,9 @@ export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications'>('overview');
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
+  const [sharedSmsLogs, setSharedSmsLogs] = useState<any[]>([]);
+  const [testSms, setTestSms] = useState({ phone: '', message: 'Test de connexion DBS-BAN' });
+  const [isSendingTest, setIsSendingTest] = useState(false);
   const [courierStats, setCourierStats] = useState<Record<string, any>>({});
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
   const [breakdownModal, setBreakdownModal] = useState<{
@@ -86,6 +97,10 @@ export default function AdminDashboard() {
     const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
     setNotificationLogs(logs);
 
+    // Load shared SMS logs from server
+    const sharedLogs = await getSMSLogs();
+    setSharedSmsLogs(sharedLogs);
+
     // Load stats for each user
     const stats: Record<string, any> = {};
     for (const user of usersData) {
@@ -93,6 +108,21 @@ export default function AdminDashboard() {
     }
     setCourierStats(stats);
   };
+
+  useEffect(() => {
+    let interval: any;
+    if (activeTab === 'notifications') {
+      const refreshLogs = async () => {
+        const shared = await getSMSLogs();
+        setSharedSmsLogs(shared);
+      };
+      refreshLogs();
+      interval = setInterval(refreshLogs, 5000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [activeTab]);
 
   useEffect(() => {
     loadData();
@@ -496,7 +526,7 @@ export default function AdminDashboard() {
       // Send notifications based on new status
       if (newStatus === 'EXPEDIE') {
         const msg = createParcelShippedMessage(updated.code, updated.destinationCity);
-        sendSMS(updated.recipientPhone, msg);
+        sendSMS(updated.recipientPhone, msg, 'EXPÉDITION');
         logNotification('Notification (Expédition)', updated.recipientPhone, updated.code);
       } else if (newStatus === 'ARRIVE') {
         const msg = createParcelArrivedMessage(updated.code);
@@ -764,134 +794,148 @@ export default function AdminDashboard() {
       {activeTab === 'revenue' && <RevenueChart />}
       
       {activeTab === 'notifications' && (
-        <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
-          <div className="flex justify-between items-center mb-6">
-            <h3 className="text-lg font-semibold text-white flex items-center gap-2">
-              <Bell className="w-5 h-5 text-yellow-400" />
-              Historique des SMS
-            </h3>
-            <div className="flex gap-2">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="lg:col-span-1 space-y-6">
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Bell className="w-5 h-5 text-yellow-400" />
+                Tester l'envoi SMS
+              </h3>
+              <div className="space-y-4">
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Numéro de téléphone</label>
+                  <input 
+                    type="tel"
+                    placeholder="0700000000"
+                    value={testSms.phone}
+                    onChange={(e) => setTestSms({...testSms, phone: e.target.value})}
+                    className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500 transition-colors"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-gray-400 mb-1">Message</label>
+                  <textarea 
+                    rows={4}
+                    value={testSms.message}
+                    onChange={(e) => setTestSms({...testSms, message: e.target.value})}
+                    className="w-full bg-black/20 border border-white/10 rounded-lg px-4 py-2 text-white outline-none focus:border-blue-500 transition-colors resize-none text-sm"
+                  />
+                </div>
+                <button 
+                  disabled={isSendingTest || !testSms.phone}
+                  onClick={async () => {
+                    setIsSendingTest(true);
+                    const success = await sendSMS(testSms.phone, testSms.message, 'TEST');
+                    setIsSendingTest(false);
+                    if (success) {
+                      const shared = await getSMSLogs();
+                      setSharedSmsLogs(shared);
+                      setNotificationModal({
+                        isOpen: true,
+                        title: 'SMS Envoyé',
+                        message: 'Le SMS de test a été transmis avec succès.',
+                        type: 'success'
+                      });
+                    }
+                  }}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white rounded-lg font-medium transition-all shadow-lg shadow-blue-900/20"
+                >
+                  {isSendingTest ? 'Envoi en cours...' : 'Envoyer SMS Test'}
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                <Shield className="w-5 h-5 text-green-400" />
+                Status de l'API
+              </h3>
               <button 
                 disabled={isCheckingConfig}
                 onClick={async () => {
                   setIsCheckingConfig(true);
-                  
                   try {
-                    // 1. D'abord vérifier si le serveur répond au ping
-                    const pingRes = await fetch('/ping');
-                    const pingText = await pingRes.text();
-                    
-                    if (!pingRes.ok || pingText !== 'pong') {
-                      throw new Error(`Le serveur ne répond pas. Vérifiez que server.ts est bien démarré. (Status: ${pingRes.status})`);
-                    }
-
-                    // 2. Vérifier l'API health
-                    const response = await fetch('/api/health');
-                    const text = await response.text();
-                    let data;
-                    try {
-                      data = JSON.parse(text);
-                    } catch (e) {
-                      throw new Error(`Réponse non-JSON de /api/health: ${text.substring(0, 50)}`);
-                    }
-
-                    if (response.ok) {
-                      // 3. Vérifier la config Orange
-                      const configResponse = await fetch('/api/check-orange-config');
-                      const configData = await configResponse.json();
-                      
-                      const isOk = configData.tokenSuccess && configData.senderSet;
-                      setNotificationModal({
-                        isOpen: true,
-                        title: 'État de la Configuration',
-                        message: isOk 
-                          ? `Configuration Orange SMS OK ! Token: VALIDE, Expéditeur: ${configData.sender}`
-                          : `Configuration INCOMPLÈTE. Token: ${configData.tokenSuccess ? 'OK' : 'ERREUR'}, Expéditeur: ${configData.senderSet ? configData.sender : 'MANQUANT'}.`,
-                        type: isOk ? 'success' : 'error'
-                      });
-                    } else {
-                      throw new Error(`Erreur API Health (${response.status}): ${data?.error || 'Inconnu'}`);
-                    }
-                  } catch (err: any) {
-                    console.error('Check config error:', err);
+                    const response = await fetch('/api/check-orange-config');
+                    const configData = await response.json();
+                    const isOk = configData.tokenSuccess && configData.senderSet;
                     setNotificationModal({
                       isOpen: true,
-                      title: 'Erreur de Connexion',
-                      message: `Impossible de contacter le serveur. Détails: ${err.message}`,
+                      title: 'État de la Configuration',
+                      message: isOk 
+                        ? `Configuration Orange SMS opérationnelle. Token valide, expéditeur: ${configData.sender}`
+                        : `Configuration incomplète. Vérifiez vos variables d'environnement Orange.`,
+                      type: isOk ? 'success' : 'error'
+                    });
+                  } catch (err: any) {
+                    setNotificationModal({
+                      isOpen: true,
+                      title: 'Erreur',
+                      message: `Impossible de contacter le serveur d'API Orange.`,
                       type: 'error'
                     });
                   } finally {
                     setIsCheckingConfig(false);
                   }
                 }}
-                className="text-xs text-green-400 hover:text-green-300 transition-colors border border-green-400/30 px-2 py-1 rounded disabled:opacity-50"
+                className="w-full py-2 border border-white/10 hover:bg-white/5 text-white rounded-lg text-sm transition-all"
               >
-                {isCheckingConfig ? 'Vérification...' : 'Vérifier Config'}
-              </button>
-              <button 
-                onClick={async () => {
-                  const phone = prompt('Numéro de téléphone (ex: 0700000000):');
-                  if (phone) {
-                    const success = await sendSMS(phone, 'Ceci est un test du service SMS DBS-BAN.');
-                    if (success) {
-                      const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
-                      setNotificationLogs(logs);
-                    }
-                  }
-                }}
-                className="text-xs text-blue-400 hover:text-blue-300 transition-colors border border-blue-400/30 px-2 py-1 rounded"
-              >
-                Tester l'envoi
-              </button>
-              <button 
-                onClick={() => {
-                  localStorage.removeItem('notification_logs');
-                  setNotificationLogs([]);
-                }}
-                className="text-xs text-red-400 hover:text-red-300 transition-colors"
-              >
-                Effacer l'historique
+                {isCheckingConfig ? 'Vérification...' : 'Tester la connexion Orange'}
               </button>
             </div>
           </div>
-          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2 custom-scrollbar">
-            {notificationLogs.length > 0 ? (
-              notificationLogs.map((log: any, idx) => (
-                <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 flex items-center justify-between group hover:bg-white/10 transition-all">
-                  <div className="flex items-center gap-4">
-                    <div className={`p-2 rounded-lg ${
-                      log.status === 'error' ? 'bg-red-500/20 text-red-400' :
-                      log.status === 'real' ? 'bg-green-500/20 text-green-400' :
-                      'bg-blue-500/20 text-blue-400'
-                    }`}>
-                      {log.status === 'error' ? <AlertCircle className="w-5 h-5" /> : 
-                       log.status === 'real' ? <CheckCircle className="w-5 h-5" /> : 
-                       <Package className="w-5 h-5 opacity-50" />}
-                    </div>
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="text-white font-bold">{log.action}</span>
-                        {log.status === 'simulated' && (
-                          <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20 font-black uppercase">Simulé</span>
-                        )}
-                        {log.status === 'real' && (
-                          <span className="text-[10px] bg-green-500/10 text-green-400 px-1.5 py-0.5 rounded border border-green-500/20 font-black uppercase tracking-tighter">API Réelle</span>
-                        )}
-                      </div>
-                      <p className="text-[11px] text-gray-500 mt-0.5">{log.timestamp}</p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="text-sm text-gray-300 font-mono">{log.phone}</p>
-                    <p className="text-[10px] text-gray-500">Colis: {log.parcelCode}</p>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-center py-12 text-gray-500 italic">
-                Aucune notification envoyée pour le moment.
+
+          <div className="lg:col-span-2 space-y-6">
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <div className="flex justify-between items-center mb-6">
+                <h3 className="text-lg font-semibold text-white">Historique des envois</h3>
+                <button 
+                  onClick={() => {
+                    localStorage.removeItem('notification_logs');
+                    setNotificationLogs([]);
+                  }}
+                  className="text-xs text-red-400 hover:text-red-300 transition-colors flex items-center gap-1"
+                >
+                  <Trash2 className="w-3 h-3" /> Effacer locale
+                </button>
               </div>
-            )}
+
+              <div className="space-y-3 max-h-[700px] overflow-y-auto pr-2 custom-scrollbar">
+                {sharedSmsLogs.length > 0 ? (
+                  sharedSmsLogs.map((log: any, idx) => (
+                    <div key={idx} className="bg-white/5 border border-white/5 rounded-xl p-4 hover:bg-white/10 transition-all">
+                      <div className="flex justify-between items-start mb-2">
+                        <div className="flex items-center gap-3">
+                          <div className={`p-1.5 rounded-md ${
+                            log.status === 'ERROR' ? 'bg-red-500/20 text-red-400' : 'bg-green-500/20 text-green-400'
+                          }`}>
+                            {log.status === 'ERROR' ? <AlertCircle className="w-4 h-4" /> : <CheckCircle className="w-4 h-4" />}
+                          </div>
+                          <div>
+                            <span className="text-white font-medium text-sm">{log.phone}</span>
+                            <span className="text-[10px] text-gray-500 ml-2">{new Date(log.timestamp).toLocaleString('fr-FR')}</span>
+                          </div>
+                        </div>
+                        <span className={`text-[10px] px-2 py-0.5 rounded border ${
+                          log.type === 'SYSTEM' ? 'border-gray-500/30 text-gray-400' : 'border-blue-500/30 text-blue-400'
+                        }`}>
+                          {log.type}
+                        </span>
+                      </div>
+                      <p className="text-gray-300 text-sm italic">"{log.message}"</p>
+                      {log.error && (
+                        <p className="text-red-400 text-[10px] mt-2 font-mono bg-red-950/20 p-2 rounded border border-red-500/20">
+                          Error: {log.error}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                ) : (
+                  <div className="text-center py-12 text-gray-500 italic">
+                    Aucun historique d'envoi partagé.
+                  </div>
+                )}
+              </div>
+            </div>
           </div>
         </div>
       )}

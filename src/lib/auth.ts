@@ -537,7 +537,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
         
         // Send SMS for Delivery
         const message = createParcelDeliveredMessage(current.code);
-        await sendSMS(current.recipient_phone, message);
+        await sendSMS(current.recipient_phone, message, 'LIVRAISON');
         logNotification('SMS Livraison', current.recipient_phone, current.code);
       }
     }
@@ -564,7 +564,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
         }
         
         if (message) {
-          await sendSMS(current.recipient_phone, message);
+          await sendSMS(current.recipient_phone, message, updates.status === 'EXPEDIE' ? 'EXPÉDITION' : 'ARRIVÉE');
           logNotification(action, current.recipient_phone, current.code);
         }
       }

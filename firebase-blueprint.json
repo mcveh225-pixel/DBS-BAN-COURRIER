@@ -54,6 +54,21 @@
         "deliveredParcels": { "type": "number" }
       },
       "required": ["date", "totalRevenue", "totalParcels"]
+    },
+    "SMSLog": {
+      "title": "SMS Log",
+      "description": "Historique des envois de SMS via l'API Orange.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipient": { "type": "string" },
+        "message": { "type": "string" },
+        "status": { "type": "string", "enum": ["SUCCESS", "ERROR"] },
+        "error": { "type": "string" },
+        "timestamp": { "type": "string", "format": "date-time" },
+        "type": { "type": "string", "description": "Type de notification (ex: TEST, AUTOMATIC)" }
+      },
+      "required": ["id", "recipient", "message", "status", "timestamp"]
     }
   },
   "firestore": {
@@ -68,6 +83,10 @@
     "dailyRevenues": {
       "schema": "DailyRevenue",
       "description": "Collection des revenus quotidiens."
+    },
+    "smsLogs": {
+      "schema": "SMSLog",
+      "description": "Historique complet des notifications SMS."
     }
   }
 }

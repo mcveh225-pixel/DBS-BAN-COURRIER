@@ -38,6 +38,7 @@ app.get("/api/health", (req, res) => {
 // Orange API Auth Logic
 let orangeAccessToken: string | null = null;
 let tokenExpiry: number = 0;
+let smsLogs: any[] = []; // In-memory cache for recent logs
 
 const getOrangeAccessToken = async () => {
   if (orangeAccessToken && Date.now() < tokenExpiry) return orangeAccessToken;
@@ -78,13 +79,20 @@ app.get("/api/check-orange-config", async (req, res) => {
   });
 });
 
+app.get("/api/sms-logs", (req, res) => {
+  res.json(smsLogs);
+});
+
 app.post("/api/send-sms", async (req, res) => {
-  const { phone, message } = req.body;
+  const { phone, message, type = "SYSTEM" } = req.body;
   const token = await getOrangeAccessToken();
   const senderAddress = process.env.ORANGE_SENDER;
 
   if (!token || !senderAddress) {
-    return res.status(500).json({ error: "Configuration Orange incomplète" });
+    const error = "Configuration Orange incomplète";
+    smsLogs.unshift({ timestamp: new Date().toISOString(), phone, message, status: "ERROR", error, type });
+    if (smsLogs.length > 50) smsLogs.pop();
+    return res.status(500).json({ error });
   }
 
   try {
@@ -97,7 +105,13 @@ app.post("/api/send-sms", async (req, res) => {
     // Pour Orange, l'expéditeur DOIT commencer par tel:
     let formattedSender = senderAddress;
     if (!formattedSender.startsWith('tel:')) {
-      formattedSender = `tel:${formattedSender}`;
+      // Si c'est un numéro (MSISDN), ajouter +. Sinon (Alpha Sender), laisser tel:
+      if (/^\d+$/.test(formattedSender.replace(/[^\d+]/g, ''))) {
+        if (!formattedSender.startsWith('+')) formattedSender = `+${formattedSender}`;
+        formattedSender = `tel:${formattedSender}`;
+      } else {
+        formattedSender = `tel:${formattedSender}`;
+      }
     }
     
     const senderEncoded = encodeURIComponent(formattedSender);
@@ -118,16 +132,24 @@ app.post("/api/send-sms", async (req, res) => {
     });
 
     if (response.ok) {
+      smsLogs.unshift({ timestamp: new Date().toISOString(), phone: cleaned, message, status: "SUCCESS", type });
+      if (smsLogs.length > 50) smsLogs.pop();
       res.json({ success: true });
     } else {
       const err = await response.json() as any;
-      console.error("[ORANGE] Error details:", JSON.stringify(err));
+      let errorMsg = err.serviceException?.text || err.requestError?.serviceException?.text || "API Orange error";
       
-      // Essayer d'extraire un message d'erreur lisible
-      const errorMsg = err.serviceException?.text || err.requestError?.serviceException?.text || "API Orange error";
+      if (errorMsg.includes("SVC0001")) errorMsg = "Solde SMS insuffisant ou service Orange indisponible";
+      if (errorMsg.includes("SVC0002")) errorMsg = "Numéro destinataire invalide";
+      
+      smsLogs.unshift({ timestamp: new Date().toISOString(), phone: cleaned, message, status: "ERROR", error: errorMsg, type });
+      if (smsLogs.length > 50) smsLogs.pop();
+      
       res.status(response.status).json({ error: errorMsg, details: err });
     }
   } catch (e: any) {
+    smsLogs.unshift({ timestamp: new Date().toISOString(), phone, message, status: "ERROR", error: e.message, type });
+    if (smsLogs.length > 50) smsLogs.pop();
     res.status(500).json({ error: e.message });
   }
 });
