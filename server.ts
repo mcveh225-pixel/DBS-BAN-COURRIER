@@ -93,7 +93,14 @@ app.post("/api/send-sms", async (req, res) => {
     else if (!cleaned.startsWith('+')) cleaned = `+${cleaned}`;
     
     const receiverHeader = `tel:${cleaned}`;
-    const senderEncoded = encodeURIComponent(senderAddress);
+    
+    // Pour Orange, l'expéditeur DOIT commencer par tel:
+    let formattedSender = senderAddress;
+    if (!formattedSender.startsWith('tel:')) {
+      formattedSender = `tel:${formattedSender}`;
+    }
+    
+    const senderEncoded = encodeURIComponent(formattedSender);
 
     const response = await fetch(`https://api.orange.com/smsmessaging/v1/outbound/${senderEncoded}/requests`, {
       method: 'POST',
@@ -104,7 +111,7 @@ app.post("/api/send-sms", async (req, res) => {
       body: JSON.stringify({
         outboundSMSMessageRequest: {
           address: [receiverHeader],
-          senderAddress: senderAddress,
+          senderAddress: formattedSender,
           outboundSMSTextMessage: { message }
         }
       })
@@ -113,8 +120,12 @@ app.post("/api/send-sms", async (req, res) => {
     if (response.ok) {
       res.json({ success: true });
     } else {
-      const err = await response.json();
-      res.status(response.status).json({ error: "API Orange error", details: err });
+      const err = await response.json() as any;
+      console.error("[ORANGE] Error details:", JSON.stringify(err));
+      
+      // Essayer d'extraire un message d'erreur lisible
+      const errorMsg = err.serviceException?.text || err.requestError?.serviceException?.text || "API Orange error";
+      res.status(response.status).json({ error: errorMsg, details: err });
     }
   } catch (e: any) {
     res.status(500).json({ error: e.message });
