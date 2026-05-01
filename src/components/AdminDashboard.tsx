@@ -139,13 +139,22 @@ export default function AdminDashboard() {
 
   const tenDayPeriod = getCurrentTenDayPeriod();
   const currentMonthUTC = new Date().toISOString().slice(0, 7);
+  const currentYearUTC = new Date().toISOString().slice(0, 4);
+
+  // Annual revenue reset logic
+  const getAnnualRevenueStart = () => {
+    const resetDate = '2026-05-01'; // Date de réinitialisation demandée
+    return resetDate;
+  };
+
+  const annualRevenueStart = getAnnualRevenueStart();
   
   const monthlyRevenue = parcels
     .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt.startsWith(currentMonthUTC))
     .reduce((sum, p) => sum + p.price, 0);
 
   const totalRevenue = parcels
-    .filter(p => p.isPaid && p.status !== 'ANNULE')
+    .filter(p => p.isPaid && p.status !== 'ANNULE' && p.createdAt >= annualRevenueStart)
     .reduce((sum, p) => sum + p.price, 0);
 
   const tenDayRevenue = parcels
@@ -465,7 +474,8 @@ export default function AdminDashboard() {
           const userYearlyParcels = parcels.filter(p => 
             p.createdBy === u.id && 
             p.isPaid && 
-            p.status !== 'ANNULE'
+            p.status !== 'ANNULE' &&
+            p.createdAt >= annualRevenueStart
           );
           const revenue = userYearlyParcels.reduce((sum, p) => sum + p.price, 0);
           return {

@@ -32,12 +32,7 @@ export default function RevenueChart() {
 
   // Annual revenue reset logic
   const getAnnualRevenueStart = () => {
-    const now = new Date();
-    const resetDate = new Date('2026-05-01');
-    if (now >= resetDate) {
-      return '2026-05-01';
-    }
-    return `${now.getFullYear()}-01-01`;
+    return '2026-05-01'; // Date de réinitialisation demandée
   };
 
   const annualRevenueStart = getAnnualRevenueStart();
