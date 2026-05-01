@@ -496,15 +496,27 @@ export const incrementDeliveredCount = async () => {
 
 export const updateParcel = async (id: string, updates: Partial<Parcel>): Promise<Parcel | null> => {
   try {
+    // 1. Fetch current state safely for side effects
+    const { data: currentParcel } = await supabase
+      .from('parcels')
+      .select('*')
+      .eq('id', id)
+      .single();
+    
     const dbUpdates: any = {};
     if (updates.status) dbUpdates.status = updates.status;
-    if (updates.isPaid !== undefined) dbUpdates.is_paid = updates.isPaid;
-    if (updates.paidAt) dbUpdates.paid_at = updates.paidAt;
-    if (updates.shippedAt) dbUpdates.shipped_at = updates.shippedAt;
-    if (updates.arrivedAt) dbUpdates.arrived_at = updates.arrivedAt;
-    if (updates.deliveredAt) dbUpdates.delivered_at = updates.deliveredAt;
+    if (updates.isPaid !== undefined) {
+      dbUpdates.is_paid = updates.isPaid;
+      if (updates.isPaid && (!currentParcel || !currentParcel.is_paid)) {
+        dbUpdates.paid_at = new Date().toISOString();
+      }
+    }
     
-    // Support for editing other fields
+    // Standard timestamps
+    if (updates.status === 'ARRIVE') dbUpdates.arrived_at = new Date().toISOString();
+    if (updates.status === 'LIVRE') dbUpdates.delivered_at = new Date().toISOString();
+    // shipped_at is omitted to avoid schema conflict if not yet migrated
+    
     if (updates.senderName) dbUpdates.sender_name = updates.senderName;
     if (updates.senderPhone) dbUpdates.sender_phone = updates.senderPhone;
     if (updates.recipientName) dbUpdates.recipient_name = updates.recipientName;
@@ -516,60 +528,7 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     if (updates.price !== undefined) dbUpdates.price = updates.price;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
-    // Handle revenue update if marking as paid
-    if (updates.isPaid) {
-      const { data: current } = await supabase.from('parcels').select('is_paid, price').eq('id', id).single();
-      if (current && !current.is_paid) {
-        await updateDailyRevenue(current.price);
-        dbUpdates.paid_at = new Date().toISOString();
-      }
-    }
-
-    // Handle delivered count if marking as delivered
-    if (updates.status === 'LIVRE') {
-      const { data: current } = await supabase.from('parcels')
-        .select('status, code, recipient_phone')
-        .eq('id', id)
-        .single();
-      if (current && current.status !== 'LIVRE') {
-        await incrementDeliveredCount();
-        dbUpdates.delivered_at = new Date().toISOString();
-        
-        // Send SMS for Delivery
-        const message = createParcelDeliveredMessage(current.code);
-        await sendSMS(current.recipient_phone, message, 'LIVRAISON');
-        logNotification('SMS Livraison', current.recipient_phone, current.code);
-      }
-    }
-
-    // Handle SMS for EXPEDIE and ARRIVE
-    if (updates.status === 'EXPEDIE' || updates.status === 'ARRIVE') {
-      const { data: current } = await supabase.from('parcels')
-        .select('status, code, recipient_phone, destination_city')
-        .eq('id', id)
-        .single();
-      
-      if (current && current.status !== updates.status) {
-        let message = '';
-        let action = '';
-        
-        if (updates.status === 'EXPEDIE') {
-          message = createParcelShippedMessage(current.code, current.destination_city);
-          action = 'SMS Expédition';
-          dbUpdates.shipped_at = new Date().toISOString();
-        } else if (updates.status === 'ARRIVE') {
-          message = createParcelArrivedMessage(current.code);
-          action = 'SMS Arrivée';
-          dbUpdates.arrived_at = new Date().toISOString();
-        }
-        
-        if (message) {
-          await sendSMS(current.recipient_phone, message, updates.status === 'EXPEDIE' ? 'EXPÉDITION' : 'ARRIVÉE');
-          logNotification(action, current.recipient_phone, current.code);
-        }
-      }
-    }
-
+    // 2. Perform the update
     const { data, error } = await supabase
       .from('parcels')
       .update(dbUpdates)
@@ -577,7 +536,49 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
       .select('*, creator:users!created_by(city)')
       .single();
 
-    if (error) throw error;
+    if (error) {
+      console.error('Supabase Update Error:', error);
+      throw error;
+    }
+
+    // 3. Side effects (best effort)
+    if (currentParcel) {
+      const runSideEffects = async () => {
+        try {
+          if (updates.isPaid && !currentParcel.is_paid) {
+            updateDailyRevenue(currentParcel.price);
+          }
+
+          if (updates.status === 'LIVRE' && currentParcel.status !== 'LIVRE') {
+            incrementDeliveredCount();
+            const msg = createParcelDeliveredMessage(currentParcel.code);
+            sendSMS(currentParcel.recipient_phone, msg, 'LIVRAISON');
+            logNotification('SMS Livraison', currentParcel.recipient_phone, currentParcel.code);
+          }
+
+          if ((updates.status === 'EXPEDIE' || updates.status === 'ARRIVE') && currentParcel.status !== updates.status) {
+            let message = '';
+            let type = '';
+            
+            if (updates.status === 'EXPEDIE') {
+              message = createParcelShippedMessage(currentParcel.code, currentParcel.destination_city);
+              type = 'EXPÉDITION';
+            } else if (updates.status === 'ARRIVE') {
+              message = createParcelArrivedMessage(currentParcel.code);
+              type = 'ARRIVÉE';
+            }
+            
+            if (message) {
+              sendSMS(currentParcel.recipient_phone, message, type);
+              logNotification(`SMS ${type}`, currentParcel.recipient_phone, currentParcel.code);
+            }
+          }
+        } catch (e) {
+          console.error('Side effects error:', e);
+        }
+      };
+      runSideEffects();
+    }
 
     return mapParcel(data);
   } catch (error) {

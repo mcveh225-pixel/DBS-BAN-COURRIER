@@ -30,6 +30,7 @@ CREATE TABLE IF NOT EXISTS parcels (
   paid_at TIMESTAMPTZ,
   arrived_at TIMESTAMPTZ,
   delivered_at TIMESTAMPTZ,
+  shipped_at TIMESTAMPTZ,
   created_by TEXT REFERENCES users(id),
   created_at TIMESTAMPTZ DEFAULT NOW(),
   notes TEXT

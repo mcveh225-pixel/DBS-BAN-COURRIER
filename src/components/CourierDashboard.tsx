@@ -260,21 +260,6 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     const updates: Partial<Parcel> = { status: newStatus };
     const updated = await updateParcel(parcelId, updates);
     if (updated) {
-      // Send notifications based on new status
-      if (newStatus === 'EXPEDIE') {
-        const msg = createParcelShippedMessage(updated.code, updated.destinationCity);
-        sendSMS(updated.recipientPhone, msg);
-        logNotification('Notification (Expédition)', updated.recipientPhone, updated.code);
-      } else if (newStatus === 'ARRIVE') {
-        const msg = createParcelArrivedMessage(updated.code);
-        sendBothNotifications(updated.recipientPhone, msg);
-        logNotification('Notification (Arrivée)', updated.recipientPhone, updated.code);
-      } else if (newStatus === 'LIVRE') {
-        const msg = createParcelDeliveredMessage(updated.code);
-        sendBothNotifications(updated.recipientPhone, msg);
-        logNotification('Notification (Livraison)', updated.recipientPhone, updated.code);
-      }
-
       // Update local state for the modal
       setDetailsModal(prev => ({
         ...prev,
