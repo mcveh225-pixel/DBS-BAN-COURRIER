@@ -62,14 +62,14 @@ export default function CreateParcelForm({ userId, onCancel, parcel, onSuccess }
           throw new Error('Erreur lors de la mise à jour');
         }
       } else {
-        // Create new parcel
+        // Create new parcel - Always mark as paid
         const newParcel = await createParcel({
           senderName: formData.senderName, senderPhone: formData.senderPhone,
           recipientName: formData.recipientName, recipientPhone: formData.recipientPhone,
           destinationCity: formData.destinationCity, packageType: formData.packageType,
           quantity: Number(formData.quantity),
           value: formData.value, price: Number(formData.price),
-          status: formData.isPaid ? 'PAYE' : 'ENREGISTRE', isPaid: formData.isPaid, 
+          status: 'PAYE', isPaid: true, 
           createdBy: userId, 
           originCity: getCurrentUser()?.city || 'Inconnue',
           notes: formData.notes
@@ -86,12 +86,12 @@ export default function CreateParcelForm({ userId, onCancel, parcel, onSuccess }
           formData.destinationCity, 
           formData.value || '0',
           Number(formData.price), 
-          formData.isPaid
+          true
         );
         sendBothNotifications(formData.senderPhone, receiptMsg);
         logNotification('Notification (Reçu Expéditeur)', formData.senderPhone, newParcel.code);
 
-        setMessage({ type: 'success', text: `Colis ${newParcel.code} créé avec succès !`, parcel: newParcel });
+        setMessage({ type: 'success', text: `Colis ${newParcel.code} créé et payé avec succès !`, parcel: newParcel });
         setFormData({ senderName: '', senderPhone: '', recipientName: '', recipientPhone: '', destinationCity: '', packageType: '', quantity: '1', value: '', price: '', notes: '', isPaid: false });
         if (onSuccess) onSuccess(newParcel);
       }
@@ -203,22 +203,9 @@ export default function CreateParcelForm({ userId, onCancel, parcel, onSuccess }
             </div>
           </div>
         </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div className="flex items-center gap-2">
-            <input 
-              type="checkbox" 
-              id="isPaid" 
-              name="isPaid" 
-              checked={formData.isPaid} 
-              onChange={handleChange}
-              className="w-5 h-5 rounded border-white/20 bg-white/10 text-blue-600 focus:ring-blue-500"
-            />
-            <label htmlFor="isPaid" className="text-sm font-medium text-gray-300">Colis payé à l'enregistrement</label>
-          </div>
-        </div>
         <div className="flex flex-col sm:flex-row gap-4">
           <button type="submit" disabled={isSubmitting} className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-semibold py-3 px-6 rounded-lg transition-colors flex items-center justify-center gap-2">
-            {isSubmitting ? (parcel ? 'Mise à jour...' : 'Création...') : <><Package className="w-5 h-5" /> {parcel ? 'Mettre à jour' : 'Créer le colis'}</>}
+            {isSubmitting ? (parcel ? 'Mise à jour...' : 'Création...') : <><Package className="w-5 h-5" /> {parcel ? 'Mettre à jour' : 'Créer et Enregistrer colis'}</>}
           </button>
           {onCancel && (
             <button 
