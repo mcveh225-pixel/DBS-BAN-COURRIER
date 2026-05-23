@@ -1,6 +1,6 @@
 import React from 'react';
-import { ChevronLeft, Package, Printer, Truck, CheckCircle, Edit, Archive, Trash2, User, Phone, MapPin, Calendar, Info, DollarSign, Settings, Send } from 'lucide-react';
-import { Parcel, getDisplayStatus, getStatusColor } from '../lib/auth';
+import { ChevronLeft, Package, Printer, Truck, CheckCircle, Edit, Archive, Trash2, User, Phone, MapPin, Calendar, Info, DollarSign, Settings, Send, Clock } from 'lucide-react';
+import { Parcel, getDisplayStatus, getStatusColor, getCurrentUser } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 
 interface ParcelDetailsPageProps {
@@ -12,9 +12,13 @@ interface ParcelDetailsPageProps {
   onDelete?: (parcelId: string, parcelCode: string) => void;
   userCity?: string;
   userId?: string;
+  isAdmin?: boolean;
+  onViewHistory?: (parcelId: string) => void;
 }
 
-export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEdit, onCancel, onDelete, userCity, userId }: ParcelDetailsPageProps) {
+export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEdit, onCancel, onDelete, userCity, userId, isAdmin, onViewHistory }: ParcelDetailsPageProps) {
+  const userIsAdmin = isAdmin !== undefined ? isAdmin : (getCurrentUser()?.role === 'admin');
+
   return (
     <div className="space-y-6 animate-in fade-in slide-in-from-bottom-4 duration-500">
       {/* Page Navigation */}
@@ -26,8 +30,16 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
           <ChevronLeft className="w-5 h-5 group-hover:-translate-x-1 transition-transform" />
           <span className="font-bold text-sm">Retour à la liste</span>
         </button>
-
+  
         <div className="flex gap-3">
+          {onViewHistory && (
+            <button 
+              onClick={() => onViewHistory(parcel.id)}
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600/95 hover:bg-blue-600 text-white rounded-xl transition-all shadow-lg shadow-blue-900/40 font-bold text-sm"
+            >
+              <Clock className="w-4 h-4" /> Suivi Complet
+            </button>
+          )}
           {parcel.isPaid && (
             <button 
               onClick={() => printReceipt(parcel)}
@@ -36,7 +48,7 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
               <Printer className="w-4 h-4" /> Imprimer Reçu
             </button>
           )}
-          {onEdit && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && userId === parcel.createdBy && (
+          {onEdit && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && userIsAdmin && (
             <button 
               onClick={() => onEdit(parcel)}
               className="flex items-center gap-2 px-4 py-2 bg-amber-600 hover:bg-amber-700 text-white rounded-xl transition-all shadow-lg shadow-amber-900/40 font-bold text-sm"
@@ -199,8 +211,8 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
               </div>
               
               <div className="space-y-3">
-                {/* Actions for Creator */}
-                {userId === parcel.createdBy && (
+                {/* Actions for Creator or Admin */}
+                {(userId === parcel.createdBy || userIsAdmin) && (
                   <>
                     <p className="text-[10px] text-gray-500 uppercase font-black tracking-[0.2em] mb-2 px-1">Actions Port de Départ</p>
                     {parcel.status === 'PAYE' && (
@@ -211,7 +223,7 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
                         <Send className="w-5 h-5" /> Expédier maintenant
                       </button>
                     )}
-                    {onCancel && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                    {onCancel && userIsAdmin && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
                       <button 
                         onClick={() => onCancel(parcel.id, parcel.code)}
                         className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-red-600/10 hover:bg-red-600/20 text-red-500 rounded-xl font-black text-sm transition-all border border-red-600/30"
@@ -219,7 +231,7 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
                         <Archive className="w-5 h-5" /> Annuler l'envoi
                       </button>
                     )}
-                    {parcel.status === 'ANNULE' && onDelete && (
+                    {parcel.status === 'ANNULE' && onDelete && userIsAdmin && (
                       <button 
                         onClick={() => onDelete(parcel.id, parcel.code)}
                         className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-red-600 hover:bg-red-700 text-white rounded-xl font-black text-sm transition-all shadow-lg shadow-red-900/40"

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X, Trash2 } from 'lucide-react';
+import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X, Trash2, ChevronLeft } from 'lucide-react';
 import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor, deleteParcel } from '../lib/auth';
 import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, sendSMS, createManualSMSMessage } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
@@ -225,6 +225,45 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
     new Date(p.createdAt).toLocaleDateString() === today
   ).length;
 
+  if (editingParcel) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-6 rounded-2xl border border-white/15">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setEditingParcel(null)}
+              className="p-2.5 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-all border border-white/10 flex items-center justify-center cursor-pointer"
+              title="Retour à la liste"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                <Edit className="w-5 h-5 text-amber-500" />
+                Modification du Colis <span className="font-mono text-blue-400 font-black">{editingParcel.code}</span>
+              </h2>
+              <p className="text-gray-400 text-xs mt-1">Mettez à jour les informations du colis et enregistrez pour appliquer les modifications.</p>
+            </div>
+          </div>
+          
+          <div className="px-4 py-2 bg-black/30 rounded-xl border border-white/5 text-center">
+            <span className="text-[10px] text-gray-500 font-extrabold uppercase block select-none">Statut Actuel</span>
+            <span className={`px-2 py-0.5 mt-1 rounded text-[10px] font-black uppercase tracking-wider ${getStatusColor(editingParcel.status)} text-white block`}>
+              {getDisplayStatus(editingParcel.status)}
+            </span>
+          </div>
+        </div>
+
+        <CreateParcelForm 
+          userId={currentUser?.id || ''} 
+          parcel={editingParcel} 
+          onCancel={() => setEditingParcel(null)}
+          onSuccess={handleEditSuccess}
+        />
+      </div>
+    );
+  }
+
   if (selectedParcel) {
     return (
       <ParcelDetailsModal 
@@ -239,6 +278,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
         onDelete={handleDeleteParcel}
         userCity={userCity}
         userId={currentUser?.id}
+        isAdmin={isAdmin}
       />
     );
   }
@@ -382,21 +422,21 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                     {parcel.isPaid && parcel.status === 'PAYE' && parcel.createdBy === currentUser?.id && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Send className="w-3 h-3" /> Expédier</button>}
                     {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
                     
-                    {(parcel.createdBy === currentUser?.id || isAdmin) && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
-                      <>
-                        <button 
-                          onClick={() => setEditingParcel(parcel)} 
-                          className="bg-amber-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-amber-700 transition-colors"
-                        >
-                          <Edit className="w-3 h-3" /> Modifier
-                        </button>
-                        <button 
-                          onClick={() => handleArchiveParcel(parcel.id, parcel.code)} 
-                          className="bg-red-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-red-700 transition-colors"
-                        >
-                          <Archive className="w-3 h-3" /> Annuler
-                        </button>
-                      </>
+                    {isAdmin && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                      <button 
+                        onClick={() => setEditingParcel(parcel)} 
+                        className="bg-amber-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-amber-700 transition-colors"
+                      >
+                        <Edit className="w-3 h-3" /> Modifier
+                      </button>
+                    )}
+                    {isAdmin && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                      <button 
+                        onClick={() => handleArchiveParcel(parcel.id, parcel.code)} 
+                        className="bg-red-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-red-700 transition-colors"
+                      >
+                        <Archive className="w-3 h-3" /> Annuler
+                      </button>
                     )}
 
                     {parcel.status !== 'LIVRE' && parcel.status !== 'ANNULE' && (
@@ -411,7 +451,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                     {isDestinationCourier(parcel) && (parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && <button onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')} className="bg-orange-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Truck className="w-3 h-3" /> Arrivé</button>}
                     {isDestinationCourier(parcel) && parcel.status === 'ARRIVE' && <button onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')} className="bg-green-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Livrer</button>}
                     
-                    {parcel.status === 'ANNULE' && (isAdmin || parcel.createdBy === currentUser?.id) && (
+                    {parcel.status === 'ANNULE' && isAdmin && (
                       <button 
                         onClick={() => handleDeleteParcel(parcel.id, parcel.code)} 
                         className="bg-red-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 hover:bg-red-700 transition-colors"
@@ -427,26 +467,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
         </table>
       </div>
 
-      {editingParcel && (
-        <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-50 overflow-y-auto">
-          <div className="w-full max-w-4xl my-8">
-            <div className="relative">
-              <button 
-                onClick={() => setEditingParcel(null)}
-                className="absolute -top-12 right-0 p-2 bg-white/10 hover:bg-white/20 rounded-full text-white transition-all"
-              >
-                <X className="w-6 h-6" />
-              </button>
-              <CreateParcelForm 
-                userId={currentUser?.id || ''} 
-                parcel={editingParcel} 
-                onCancel={() => setEditingParcel(null)}
-                onSuccess={handleEditSuccess}
-              />
-            </div>
-          </div>
-        </div>
-      )}
+
 
       <NotificationModal 
         isOpen={notificationModal.isOpen}

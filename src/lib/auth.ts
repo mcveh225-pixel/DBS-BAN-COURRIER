@@ -74,6 +74,310 @@ const LOCAL_STORAGE_KEYS = {
   CURRENT_USER: 'dbs_ban_current_user'
 };
 
+// --- SYNC & LOCAL CACHE ENGINE ---
+export interface PendingAction {
+  id: string;
+  type: 'CREATE' | 'UPDATE' | 'DELETE' | 'ARCHIVE';
+  parcelId: string;
+  payload: any;
+  timestamp: string;
+}
+
+export const getCachedParcels = (): Parcel[] => {
+  if (typeof window === 'undefined') return [];
+  const cached = localStorage.getItem('dbs_cached_parcels');
+  return cached ? JSON.parse(cached) : [];
+};
+
+export const saveCachedParcels = (parcels: Parcel[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('dbs_cached_parcels', JSON.stringify(parcels));
+};
+
+export const getPendingActions = (): PendingAction[] => {
+  if (typeof window === 'undefined') return [];
+  const pending = localStorage.getItem('dbs_pending_parcel_actions');
+  return pending ? JSON.parse(pending) : [];
+};
+
+export const savePendingActions = (actions: PendingAction[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('dbs_pending_parcel_actions', JSON.stringify(actions));
+};
+
+export const getUnsyncedCount = (): number => {
+  return getPendingActions().length;
+};
+
+export const getMergedParcels = (): Parcel[] => {
+  const cached = getCachedParcels();
+  const pending = getPendingActions();
+  
+  let merged = [...cached];
+  
+  for (const action of pending) {
+    if (action.type === 'CREATE') {
+      if (!merged.some(p => p.id === action.parcelId)) {
+        const p = action.payload;
+        const localParcel: Parcel = {
+          id: action.parcelId,
+          code: p.code,
+          senderName: p.senderName,
+          senderPhone: p.senderPhone,
+          recipientName: p.recipientName,
+          recipientPhone: p.recipientPhone,
+          destinationCity: p.destinationCity,
+          packageType: p.packageType,
+          quantity: p.quantity,
+          value: p.value,
+          status: p.status,
+          price: p.price,
+          isPaid: p.isPaid,
+          paidAt: p.paidAt,
+          createdBy: p.createdBy,
+          originCity: p.originCity || 'Inconnue',
+          createdAt: p.createdAt,
+          notes: p.notes
+        };
+        merged.unshift(localParcel);
+      }
+    } else if (action.type === 'UPDATE') {
+      merged = merged.map(p => {
+        if (p.id === action.parcelId) {
+          return { ...p, ...action.payload };
+        }
+        return p;
+      });
+    } else if (action.type === 'ARCHIVE') {
+      merged = merged.map(p => {
+        if (p.id === action.parcelId) {
+          return { ...p, status: 'ANNULE' as const };
+        }
+        return p;
+      });
+    } else if (action.type === 'DELETE') {
+      merged = merged.filter(p => p.id !== action.parcelId);
+    }
+  }
+  
+  return merged;
+};
+
+let isSyncing = false;
+
+export const syncPendingActions = async (): Promise<void> => {
+  if (isSyncing) return;
+  
+  const pending = getPendingActions();
+  if (pending.length === 0) return;
+  
+  isSyncing = true;
+  console.log(`[Offline Sync] Starting sync for ${pending.length} pending actions...`);
+  
+  let i = 0;
+  for (; i < pending.length; i++) {
+    const action = pending[i];
+    try {
+      if (action.type === 'CREATE') {
+        const p = action.payload;
+        const newParcelDb: any = {
+          id: action.parcelId,
+          code: p.code,
+          sender_name: p.senderName,
+          sender_phone: p.senderPhone,
+          recipient_name: p.recipientName,
+          recipient_phone: p.recipientPhone,
+          destination_city: p.destinationCity,
+          package_type: p.packageType,
+          quantity: p.quantity,
+          value: p.value,
+          status: p.status,
+          price: p.price,
+          is_paid: p.isPaid,
+          paid_at: p.paidAt || null,
+          created_by: p.createdBy,
+          created_at: p.createdAt,
+          notes: p.notes
+        };
+
+        const { error } = await supabase
+          .from('parcels')
+          .insert([newParcelDb]);
+        
+        if (error) {
+          if (error.code !== '23505') {
+            throw error;
+          }
+        }
+
+        try {
+          await incrementTotalParcels();
+          if (p.isPaid) {
+            await updateDailyRevenue(p.price);
+          }
+        } catch (statsErr) {
+          console.error('[Offline Sync] Stats error during CREATE sync:', statsErr);
+        }
+
+      } else if (action.type === 'UPDATE') {
+        const { data: currentParcel } = await supabase
+          .from('parcels')
+          .select('*')
+          .eq('id', action.parcelId)
+          .single();
+
+        const updates = action.payload;
+        const dbUpdates: any = {};
+        if (updates.status) dbUpdates.status = updates.status;
+        if (updates.isPaid !== undefined) {
+          dbUpdates.is_paid = updates.isPaid;
+          if (updates.isPaid && (!currentParcel || !currentParcel.is_paid)) {
+            dbUpdates.paid_at = new Date().toISOString();
+          }
+        }
+        
+        if (updates.status === 'ARRIVE') dbUpdates.arrived_at = new Date().toISOString();
+        if (updates.status === 'LIVRE') dbUpdates.delivered_at = new Date().toISOString();
+        if (updates.status === 'EXPEDIE') dbUpdates.shipped_at = new Date().toISOString();
+        
+        if (updates.senderName) dbUpdates.sender_name = updates.senderName;
+        if (updates.senderPhone) dbUpdates.sender_phone = updates.senderPhone;
+        if (updates.recipientName) dbUpdates.recipient_name = updates.recipientName;
+        if (updates.recipientPhone) dbUpdates.recipient_phone = updates.recipientPhone;
+        if (updates.destinationCity) dbUpdates.destination_city = updates.destinationCity;
+        if (updates.packageType) dbUpdates.package_type = updates.packageType;
+        if (updates.quantity !== undefined) dbUpdates.quantity = updates.quantity;
+        if (updates.value !== undefined) dbUpdates.value = updates.value;
+        if (updates.price !== undefined) dbUpdates.price = updates.price;
+        if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
+
+        const { error } = await supabase
+          .from('parcels')
+          .update(dbUpdates)
+          .eq('id', action.parcelId);
+
+        if (error) throw error;
+
+        if (currentParcel) {
+          try {
+            if (updates.isPaid && !currentParcel.is_paid) {
+              await updateDailyRevenue(currentParcel.price);
+            }
+
+            if (updates.status === 'LIVRE' && currentParcel.status !== 'LIVRE') {
+              await incrementDeliveredCount();
+              const msg = createParcelDeliveredMessage(currentParcel.code);
+              sendSMS(currentParcel.recipient_phone, msg, 'LIVRAISON');
+              logNotification('SMS Livraison', currentParcel.recipient_phone, currentParcel.code);
+            }
+
+            if ((updates.status === 'EXPEDIE' || updates.status === 'ARRIVE') && currentParcel.status !== updates.status) {
+              let message = '';
+              let type = '';
+              
+              if (updates.status === 'EXPEDIE') {
+                message = createParcelShippedMessage(currentParcel.code, currentParcel.destination_city);
+                type = 'EXPÉDITION';
+              } else if (updates.status === 'ARRIVE') {
+                message = createParcelArrivedMessage(currentParcel.code);
+                type = 'ARRIVÉE';
+              }
+              
+              if (message) {
+                sendSMS(currentParcel.recipient_phone, message, type);
+                logNotification(`SMS ${type}`, currentParcel.recipient_phone, currentParcel.code);
+              }
+            }
+          } catch (e) {
+            console.error('[Offline Sync] Side effects error inside UPDATE sync:', e);
+          }
+        }
+
+      } else if (action.type === 'ARCHIVE') {
+        const { data: parcel } = await supabase
+          .from('parcels')
+          .select('is_paid, price, paid_at, created_at')
+          .eq('id', action.parcelId)
+          .single();
+        
+        if (parcel) {
+          if (parcel.is_paid) {
+            const paidDate = parcel.paid_at ? parcel.paid_at.split('T')[0] : parcel.created_at.split('T')[0];
+            const { data: existing } = await supabase.from('daily_revenues').select('*').eq('date', paidDate).single();
+            if (existing) {
+              await supabase
+                .from('daily_revenues')
+                .update({
+                  total_revenue: Math.max(0, existing.total_revenue - parcel.price),
+                  paid_parcels: Math.max(0, existing.paid_parcels - 1)
+                })
+                .eq('date', paidDate);
+            }
+          }
+
+          const createdDate = parcel.created_at.split('T')[0];
+          const { data: existingCreated } = await supabase.from('daily_revenues').select('*').eq('date', createdDate).single();
+          if (existingCreated) {
+            await supabase
+              .from('daily_revenues')
+              .update({
+                total_parcels: Math.max(0, existingCreated.total_parcels - 1)
+              })
+              .eq('date', createdDate);
+          }
+        }
+
+        const { error } = await supabase
+          .from('parcels')
+          .update({ status: 'ANNULE' })
+          .eq('id', action.parcelId);
+
+        if (error) throw error;
+
+      } else if (action.type === 'DELETE') {
+        const { error } = await supabase
+          .from('parcels')
+          .delete()
+          .eq('id', action.parcelId);
+        
+        if (error) throw error;
+      }
+      
+    } catch (err: any) {
+      console.error(`[Offline Sync] Failed to sync action of type ${action.type}:`, err);
+      break;
+    }
+  }
+
+  if (i > 0) {
+    const remaining = getPendingActions().slice(i);
+    savePendingActions(remaining);
+    console.log(`[Offline Sync] Synchronised ${i} actions. ${remaining.length} remaining.`);
+    
+    window.dispatchEvent(new CustomEvent('offline_data_synced'));
+    window.dispatchEvent(new CustomEvent('offline_action_queued'));
+  }
+  
+  isSyncing = false;
+};
+
+export const triggerBackgroundSync = () => {
+  syncPendingActions().catch(err => {
+    console.warn('[Offline Sync] Background sync failed:', err);
+  });
+};
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('online', () => {
+    console.log('[Offline Sync] Browser online. Triggering sync...');
+    triggerBackgroundSync();
+  });
+
+  setInterval(() => {
+    triggerBackgroundSync();
+  }, 15000);
+}
+
 // Utilitaire pour mapper snake_case (DB) vers camelCase
 const mapUser = (dbUser: any): User => ({
   id: dbUser.id,
@@ -252,16 +556,32 @@ export const deleteUser = async (userId: string): Promise<boolean> => {
 
 export const getParcels = async (): Promise<Parcel[]> => {
   try {
+    try {
+      await syncPendingActions();
+    } catch (syncErr) {
+      console.warn('Sync failed during getParcels fetch, proceeding:', syncErr);
+    }
+
     const { data, error } = await supabase
       .from('parcels')
       .select('*, creator:users!created_by(city)')
       .order('created_at', { ascending: false });
     
     if (error) throw error;
-    return (data || []).map(mapParcel);
+    
+    const fetched = (data || []).map(mapParcel);
+    saveCachedParcels(fetched);
+    
+    // Merge any remaining queue actions
+    const pending = getPendingActions();
+    if (pending.length > 0) {
+      return getMergedParcels();
+    }
+    
+    return fetched;
   } catch (error) {
-    console.error('Erreur lors de la récupération des colis:', error);
-    return [];
+    console.error('Erreur lors de la récupération des colis (utilisation du cache local):', error);
+    return getMergedParcels();
   }
 };
 
@@ -333,7 +653,26 @@ export const archiveUser = async (userId: string): Promise<boolean> => {
 };
 
 export const archiveParcel = async (parcelId: string): Promise<boolean> => {
+  const user = getCurrentUser();
+  if (user?.role !== 'admin') {
+    console.error('Tentative d\'annulation non autorisée');
+    return false;
+  }
+
+  // Update in local cache immediately
+  const cached = getCachedParcels();
+  const cachedIdx = cached.findIndex(p => p.id === parcelId);
+  if (cachedIdx !== -1) {
+    cached[cachedIdx].status = 'ANNULE';
+    saveCachedParcels(cached);
+  }
+
   try {
+    const pendingActions = getPendingActions();
+    if (pendingActions.some(act => act.parcelId === parcelId)) {
+      throw new Error('Pending actions exist, queuing archive.');
+    }
+
     // Fetch parcel first to check if it was paid, its price and creation date
     const { data: parcel } = await supabase
       .from('parcels')
@@ -377,23 +716,69 @@ export const archiveParcel = async (parcelId: string): Promise<boolean> => {
       .update({ status: 'ANNULE' })
       .eq('id', parcelId);
     
-    return !error;
+    if (error) throw error;
+    return true;
   } catch (error) {
-    console.error('Erreur lors de l\'annulation du colis:', error);
-    return false;
+    console.warn('Erreur de connexion. Annulation locale (gérée en tâche de fond):', error);
+
+    // Queue archive action
+    const actions = getPendingActions();
+    actions.push({
+      id: `action-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: 'ARCHIVE',
+      parcelId: parcelId,
+      payload: null,
+      timestamp: new Date().toISOString()
+    });
+    savePendingActions(actions);
+    
+    window.dispatchEvent(new CustomEvent('offline_action_queued'));
+    triggerBackgroundSync();
+    return true;
   }
 };
 
 export const deleteParcel = async (parcelId: string): Promise<boolean> => {
+  const user = getCurrentUser();
+  if (user?.role !== 'admin') {
+    console.error('Tentative de suppression définitive non autorisée');
+    return false;
+  }
+
+  // Remove from cache locally immediately
+  const cached = getCachedParcels().filter(p => p.id !== parcelId);
+  saveCachedParcels(cached);
+
   try {
+    const pendingActions = getPendingActions();
+    if (pendingActions.some(act => act.parcelId === parcelId)) {
+      throw new Error('Pending actions exist, queuing delete.');
+    }
+
     const { error } = await supabase
       .from('parcels')
       .delete()
       .eq('id', parcelId);
-    return !error;
+    
+    if (error) throw error;
+    return true;
   } catch (error) {
-    console.error('Erreur lors de la suppression définitive du colis:', error);
-    return false;
+    console.warn('Erreur de connexion. Suppression locale (gérée en tâche de fond):', error);
+
+    // Queue delete action
+    const actions = getPendingActions();
+    actions.push({
+      id: `action-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: 'DELETE',
+      parcelId: parcelId,
+      payload: null,
+      timestamp: new Date().toISOString()
+    });
+    savePendingActions(actions);
+    
+    window.dispatchEvent(new CustomEvent('offline_action_queued'));
+    triggerBackgroundSync();
+    return true;
   }
 };
 
@@ -424,10 +809,34 @@ export const incrementTotalParcels = async () => {
 };
 
 export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'createdAt'>): Promise<Parcel> => {
+  const code = generateParcelCode();
+  const tempId = `parcel-${Date.now()}`;
+  const nowStr = new Date().toISOString();
+  
+  const localParcel: Parcel = {
+    id: tempId,
+    code,
+    senderName: parcelData.senderName,
+    senderPhone: parcelData.senderPhone,
+    recipientName: parcelData.recipientName,
+    recipientPhone: parcelData.recipientPhone,
+    destinationCity: parcelData.destinationCity,
+    packageType: parcelData.packageType,
+    quantity: parcelData.quantity,
+    value: parcelData.value,
+    status: parcelData.status,
+    price: parcelData.price,
+    isPaid: parcelData.isPaid,
+    paidAt: parcelData.isPaid ? nowStr : undefined,
+    createdBy: parcelData.createdBy,
+    originCity: parcelData.originCity || getCurrentUser()?.city || 'Inconnue',
+    createdAt: nowStr,
+    notes: parcelData.notes
+  };
+
   try {
-    const code = generateParcelCode();
     const newParcel: any = {
-      id: `parcel-${Date.now()}`,
+      id: tempId,
       code,
       sender_name: parcelData.senderName,
       sender_phone: parcelData.senderPhone,
@@ -440,9 +849,9 @@ export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'cre
       status: parcelData.status,
       price: parcelData.price,
       is_paid: parcelData.isPaid,
-      paid_at: parcelData.isPaid ? new Date().toISOString() : null,
+      paid_at: parcelData.isPaid ? nowStr : null,
       created_by: parcelData.createdBy,
-      created_at: new Date().toISOString(),
+      created_at: nowStr,
       notes: parcelData.notes
     };
 
@@ -454,17 +863,46 @@ export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'cre
     
     if (error) throw error;
     
-    // Increment total parcels count for today
-    await incrementTotalParcels();
-    
-    if (newParcel.is_paid) {
-      await updateDailyRevenue(newParcel.price);
+    // Save to cache immediately
+    const mapped = mapParcel(createdParcel);
+    const cached = getCachedParcels();
+    cached.unshift(mapped);
+    saveCachedParcels(cached);
+
+    // Dynamic stats update
+    try {
+      await incrementTotalParcels();
+      if (newParcel.is_paid) {
+        await updateDailyRevenue(newParcel.price);
+      }
+    } catch (statsErr) {
+      console.error('Stats update error inside createParcel:', statsErr);
     }
     
-    return mapParcel(createdParcel);
+    return mapped;
   } catch (error) {
-    console.error('Erreur lors de la création du colis:', error);
-    throw error;
+    console.warn('Erreur de connexion. Enregistrement local du colis (hors ligne):', error);
+    
+    // Save to cache
+    const cached = getCachedParcels();
+    cached.unshift(localParcel);
+    saveCachedParcels(cached);
+    
+    // Queue CREATE action
+    const actions = getPendingActions();
+    actions.push({
+      id: `action-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: 'CREATE',
+      parcelId: localParcel.id,
+      payload: { ...parcelData, id: localParcel.id, code: localParcel.code, createdAt: localParcel.createdAt, originCity: localParcel.originCity },
+      timestamp: nowStr
+    });
+    savePendingActions(actions);
+    
+    window.dispatchEvent(new CustomEvent('offline_action_queued'));
+    triggerBackgroundSync();
+    
+    return localParcel;
   }
 };
 
@@ -495,27 +933,77 @@ export const incrementDeliveredCount = async () => {
 };
 
 export const updateParcel = async (id: string, updates: Partial<Parcel>): Promise<Parcel | null> => {
+  const user = getCurrentUser();
+  const isAdmin = user?.role === 'admin';
+  
+  if (!isAdmin) {
+    const editKeys = [
+      'senderName', 'senderPhone', 'recipientName', 'recipientPhone',
+      'destinationCity', 'packageType', 'quantity', 'value', 'price', 'notes'
+    ];
+    const isEditing = Object.keys(updates).some(key => editKeys.includes(key));
+    if (isEditing) {
+      console.error('Modification de colis non autorisée : seul un administrateur peut modifier ces informations d\'un colis pour un responsable.');
+      return null;
+    }
+  }
+
+  let currentParcel: Parcel | null = null;
+  const cached = getCachedParcels();
+  const cachedIdx = cached.findIndex(p => p.id === id);
+  if (cachedIdx !== -1) {
+    currentParcel = cached[cachedIdx];
+  }
+
+  const localUpdatedParcel: Parcel = {
+    ...(currentParcel || {
+      id,
+      code: '',
+      senderName: '',
+      senderPhone: '',
+      recipientName: '',
+      recipientPhone: '',
+      destinationCity: '',
+      packageType: '',
+      quantity: 1,
+      value: '',
+      status: 'ENREGISTRE' as const,
+      price: 0,
+      isPaid: false,
+      createdBy: '',
+      originCity: '',
+      createdAt: new Date().toISOString()
+    }),
+    ...updates
+  };
+
+  const nowStr = new Date().toISOString();
+  if (updates.status) {
+    localUpdatedParcel.status = updates.status;
+    if (updates.status === 'ARRIVE') localUpdatedParcel.arrivedAt = nowStr;
+    if (updates.status === 'LIVRE') localUpdatedParcel.deliveredAt = nowStr;
+    if (updates.status === 'EXPEDIE') localUpdatedParcel.shippedAt = nowStr;
+  }
+  if (updates.isPaid !== undefined) {
+    localUpdatedParcel.isPaid = updates.isPaid;
+    if (updates.isPaid && (!currentParcel || !currentParcel.isPaid)) {
+      localUpdatedParcel.paidAt = nowStr;
+    }
+  }
+
   try {
-    // 1. Fetch current state safely for side effects
-    const { data: currentParcel } = await supabase
-      .from('parcels')
-      .select('*')
-      .eq('id', id)
-      .single();
-    
     const dbUpdates: any = {};
     if (updates.status) dbUpdates.status = updates.status;
     if (updates.isPaid !== undefined) {
       dbUpdates.is_paid = updates.isPaid;
-      if (updates.isPaid && (!currentParcel || !currentParcel.is_paid)) {
-        dbUpdates.paid_at = new Date().toISOString();
+      if (updates.isPaid && (!currentParcel || !currentParcel.isPaid)) {
+        dbUpdates.paid_at = nowStr;
       }
     }
     
-    // Standard timestamps
-    if (updates.status === 'ARRIVE') dbUpdates.arrived_at = new Date().toISOString();
-    if (updates.status === 'LIVRE') dbUpdates.delivered_at = new Date().toISOString();
-    // shipped_at is omitted to avoid schema conflict if not yet migrated
+    if (updates.status === 'ARRIVE') dbUpdates.arrived_at = nowStr;
+    if (updates.status === 'LIVRE') dbUpdates.delivered_at = nowStr;
+    if (updates.status === 'EXPEDIE') dbUpdates.shipped_at = nowStr;
     
     if (updates.senderName) dbUpdates.sender_name = updates.senderName;
     if (updates.senderPhone) dbUpdates.sender_phone = updates.senderPhone;
@@ -528,7 +1016,11 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     if (updates.price !== undefined) dbUpdates.price = updates.price;
     if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
-    // 2. Perform the update
+    const pendingActions = getPendingActions();
+    if (pendingActions.some(act => act.parcelId === id)) {
+      throw new Error('Unsynced creations/updates exist, queue this update.');
+    }
+
     const { data, error } = await supabase
       .from('parcels')
       .update(dbUpdates)
@@ -536,41 +1028,47 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
       .select('*, creator:users!created_by(city)')
       .single();
 
-    if (error) {
-      console.error('Supabase Update Error:', error);
-      throw error;
+    if (error) throw error;
+
+    const mapped = mapParcel(data);
+
+    if (cachedIdx !== -1) {
+      cached[cachedIdx] = mapped;
+      saveCachedParcels(cached);
+    } else {
+      cached.unshift(mapped);
+      saveCachedParcels(cached);
     }
 
-    // 3. Side effects (best effort)
     if (currentParcel) {
       const runSideEffects = async () => {
         try {
-          if (updates.isPaid && !currentParcel.is_paid) {
-            updateDailyRevenue(currentParcel.price);
+          if (updates.isPaid && !currentParcel!.isPaid) {
+            updateDailyRevenue(currentParcel!.price);
           }
 
-          if (updates.status === 'LIVRE' && currentParcel.status !== 'LIVRE') {
+          if (updates.status === 'LIVRE' && currentParcel!.status !== 'LIVRE') {
             incrementDeliveredCount();
-            const msg = createParcelDeliveredMessage(currentParcel.code);
-            sendSMS(currentParcel.recipient_phone, msg, 'LIVRAISON');
-            logNotification('SMS Livraison', currentParcel.recipient_phone, currentParcel.code);
+            const msg = createParcelDeliveredMessage(currentParcel!.code);
+            sendSMS(currentParcel!.recipientPhone, msg, 'LIVRAISON');
+            logNotification('SMS Livraison', currentParcel!.recipientPhone, currentParcel!.code);
           }
 
-          if ((updates.status === 'EXPEDIE' || updates.status === 'ARRIVE') && currentParcel.status !== updates.status) {
+          if ((updates.status === 'EXPEDIE' || updates.status === 'ARRIVE') && currentParcel!.status !== updates.status) {
             let message = '';
             let type = '';
             
             if (updates.status === 'EXPEDIE') {
-              message = createParcelShippedMessage(currentParcel.code, currentParcel.destination_city);
+              message = createParcelShippedMessage(currentParcel!.code, currentParcel!.destinationCity);
               type = 'EXPÉDITION';
             } else if (updates.status === 'ARRIVE') {
-              message = createParcelArrivedMessage(currentParcel.code);
+              message = createParcelArrivedMessage(currentParcel!.code);
               type = 'ARRIVÉE';
             }
             
             if (message) {
-              sendSMS(currentParcel.recipient_phone, message, type);
-              logNotification(`SMS ${type}`, currentParcel.recipient_phone, currentParcel.code);
+              sendSMS(currentParcel!.recipientPhone, message, type);
+              logNotification(`SMS ${type}`, currentParcel!.recipientPhone, currentParcel!.code);
             }
           }
         } catch (e) {
@@ -580,10 +1078,32 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
       runSideEffects();
     }
 
-    return mapParcel(data);
+    return mapped;
   } catch (error) {
-    console.error('Erreur lors de la mise à jour du colis:', error);
-    return null;
+    console.warn('Erreur de connexion. Mise à jour locale (gérée en tâche de fond):', error);
+
+    if (cachedIdx !== -1) {
+      cached[cachedIdx] = localUpdatedParcel;
+      saveCachedParcels(cached);
+    } else {
+      cached.unshift(localUpdatedParcel);
+      saveCachedParcels(cached);
+    }
+
+    const actions = getPendingActions();
+    actions.push({
+      id: `action-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`,
+      type: 'UPDATE',
+      parcelId: id,
+      payload: updates,
+      timestamp: nowStr
+    });
+    savePendingActions(actions);
+
+    window.dispatchEvent(new CustomEvent('offline_action_queued'));
+    triggerBackgroundSync();
+
+    return localUpdatedParcel;
   }
 };
 

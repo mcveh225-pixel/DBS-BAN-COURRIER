@@ -1,16 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { Package, LogOut, Settings } from 'lucide-react';
+import { Package, LogOut, Settings, WifiOff, RefreshCw } from 'lucide-react';
 import Logo from './components/Logo';
 import AuthPage from './components/AuthPage';
 import AdminDashboard from './components/AdminDashboard';
 import CourierDashboard from './components/CourierDashboard';
 import ChangePasswordModal from './components/ChangePasswordModal';
-import { User, getCurrentUser, logout, cleanupOldDeliveredParcels } from './lib/auth';
+import { User, getCurrentUser, logout, cleanupOldDeliveredParcels, getUnsyncedCount, triggerBackgroundSync } from './lib/auth';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [unsyncedCount, setUnsyncedCount] = useState(0);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -21,6 +22,26 @@ function App() {
     if (currentUser) {
       cleanupOldDeliveredParcels();
     }
+
+    // Initial check
+    setUnsyncedCount(getUnsyncedCount());
+
+    const handleSyncChange = () => {
+      setUnsyncedCount(getUnsyncedCount());
+    };
+
+    window.addEventListener('offline_data_synced', handleSyncChange);
+    window.addEventListener('offline_action_queued', handleSyncChange);
+
+    const interval = setInterval(() => {
+      setUnsyncedCount(getUnsyncedCount());
+    }, 4000);
+
+    return () => {
+      window.removeEventListener('offline_data_synced', handleSyncChange);
+      window.removeEventListener('offline_action_queued', handleSyncChange);
+      clearInterval(interval);
+    };
   }, []);
 
   if (loading) return (
@@ -56,6 +77,25 @@ function App() {
           </div>
         </div>
       </header>
+
+      {unsyncedCount > 0 && (
+        <div className="bg-amber-600/20 border-b border-amber-600/30 text-amber-200 backdrop-blur-sm">
+          <div className="max-w-7xl mx-auto px-4 py-2.5 text-xs flex items-center justify-between font-medium">
+            <div className="flex items-center gap-2.5">
+              <WifiOff className="w-4 h-4 text-amber-500 animate-pulse" />
+              <span>
+                Connexion instable détectée – <strong>{unsyncedCount} modification{unsyncedCount > 1 ? 's' : ''}</strong> en attente de synchronisation. Vos colis sont enregistrés localement.
+              </span>
+            </div>
+            <button 
+              onClick={() => triggerBackgroundSync()}
+              className="px-3 py-1 bg-amber-600 hover:bg-amber-500 text-slate-900 rounded font-bold transition-all text-[11px] flex items-center gap-1.5 cursor-pointer shadow-md shadow-amber-900/40 text-white"
+            >
+              <RefreshCw className="w-3 h-3 animate-spin" /> Synchroniser
+            </button>
+          </div>
+        </div>
+      )}
 
       <main className="max-w-7xl mx-auto px-4 py-6">
         {user.role === 'admin' ? <AdminDashboard /> : <CourierDashboard user={user} />}

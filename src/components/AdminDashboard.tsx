@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell, CheckCircle, AlertCircle } from 'lucide-react';
+import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell, CheckCircle, AlertCircle, History, ChevronLeft, Edit } from 'lucide-react';
 import { 
   getUsers, 
   getParcels, 
@@ -33,6 +33,8 @@ import AdminBreakdownModal from './AdminBreakdownModal';
 import ConfirmationModal from './ConfirmationModal';
 import NotificationModal from './NotificationModal';
 import ParcelDetailsModal from './ParcelDetailsModal';
+import ParcelHistoryView from './ParcelHistoryView';
+import CreateParcelForm from './CreateParcelForm';
 
 export default function AdminDashboard() {
   const [users, setUsers] = useState<any[]>([]);
@@ -40,10 +42,13 @@ export default function AdminDashboard() {
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [showCreateAdminModal, setShowCreateAdminModal] = useState(false);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications'>('overview');
+  const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
+  const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications' | 'history'>('overview');
+  const [historyParcelId, setHistoryParcelId] = useState<string | undefined>(undefined);
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
   const [sharedSmsLogs, setSharedSmsLogs] = useState<any[]>([]);
+  const [smsSimulationMode, setSmsSimulationMode] = useState(() => localStorage.getItem('sms_simulation_mode') === 'true');
   const [testSms, setTestSms] = useState({ phone: '', message: 'Test de connexion DBS-BAN' });
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [courierStats, setCourierStats] = useState<Record<string, any>>({});
@@ -530,14 +535,65 @@ export default function AdminDashboard() {
     }
   };
 
+  if (editingParcel) {
+    return (
+      <div className="space-y-6 animate-in fade-in duration-300">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-6 rounded-2xl border border-white/15">
+          <div className="flex items-center gap-4">
+            <button 
+              onClick={() => setEditingParcel(null)}
+              className="p-2.5 bg-white/5 hover:bg-white/10 text-gray-400 hover:text-white rounded-xl transition-all border border-white/10 flex items-center justify-center cursor-pointer"
+              title="Retour"
+            >
+              <ChevronLeft className="w-5 h-5" />
+            </button>
+            <div>
+              <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                <Edit className="w-5 h-5 text-amber-500" />
+                Modification du Colis <span className="font-mono text-blue-400 font-black">{editingParcel.code}</span>
+              </h2>
+              <p className="text-gray-400 text-xs mt-1">Mettez à jour les informations du colis et enregistrez pour appliquer les modifications.</p>
+            </div>
+          </div>
+          
+          <div className="px-4 py-2 bg-black/30 rounded-xl border border-white/5 text-center">
+            <span className="text-[10px] text-gray-500 font-extrabold uppercase block select-none">Statut Actuel</span>
+            <span className={`px-2 py-0.5 mt-1 rounded text-[10px] font-black uppercase tracking-wider ${getStatusColor(editingParcel.status)} text-white block`}>
+              {getDisplayStatus(editingParcel.status)}
+            </span>
+          </div>
+        </div>
+
+        <CreateParcelForm 
+          userId={currentUser?.id || ''} 
+          parcel={editingParcel} 
+          onCancel={() => setEditingParcel(null)}
+          onSuccess={() => {
+            setEditingParcel(null);
+            loadData();
+          }}
+        />
+      </div>
+    );
+  }
+
   if (selectedParcel) {
     return (
       <ParcelDetailsModal
         parcel={selectedParcel}
         onBack={() => setSelectedParcel(null)}
         onStatusUpdate={handleStatusUpdate}
+        onEdit={(p) => {
+          setSelectedParcel(null);
+          setEditingParcel(p);
+        }}
         userId={currentUser?.id}
         userCity=""
+        onViewHistory={(parcelId) => {
+          setHistoryParcelId(parcelId);
+          setActiveTab('history');
+          setSelectedParcel(null);
+        }}
       />
     );
   }
@@ -551,7 +607,8 @@ export default function AdminDashboard() {
             { key: 'couriers', label: 'Utilisateurs', icon: Users },
             { key: 'parcels', label: 'Colis', icon: Package },
             { key: 'revenue', label: 'Revenus', icon: DollarSign },
-            { key: 'notifications', label: 'SMS Envoyés', icon: Bell }
+            { key: 'notifications', label: 'SMS Envoyés', icon: Bell },
+            { key: 'history', label: 'Historique', icon: History }
           ].map((tab) => (
             <button
               key={tab.key}
@@ -777,6 +834,12 @@ export default function AdminDashboard() {
 
       {activeTab === 'parcels' && <ParcelList isAdmin={true} userCity="" onParcelClick={setSelectedParcel} />}
       {activeTab === 'revenue' && <RevenueChart />}
+      {activeTab === 'history' && (
+        <ParcelHistoryView 
+          initialParcelId={historyParcelId} 
+          onSelectParcel={(parcel) => setHistoryParcelId(parcel.id)} 
+        />
+      )}
       
       {activeTab === 'notifications' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -833,8 +896,33 @@ export default function AdminDashboard() {
             <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
               <h3 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
                 <Shield className="w-5 h-5 text-green-400" />
-                Status de l'API
+                Configuration & Simulation
               </h3>
+
+              <div className="flex items-center justify-between p-3.5 bg-black/30 rounded-xl border border-white/5 mb-5 select-none">
+                <div className="pr-2">
+                  <span className="text-sm font-semibold text-white block">Mode Simulation</span>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Simule l'envoi de SMS (recommandé si l'API Orange n'a plus de crédit).</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const nextVal = !smsSimulationMode;
+                    setSmsSimulationMode(nextVal);
+                    localStorage.setItem('sms_simulation_mode', String(nextVal));
+                  }}
+                  type="button"
+                  className={`relative inline-flex h-6 w-11 shrink-0 items-center rounded-full transition-colors cursor-pointer focus:outline-none ${
+                    smsSimulationMode ? 'bg-blue-600' : 'bg-slate-700'
+                  }`}
+                >
+                  <span
+                    className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
+                      smsSimulationMode ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
+              </div>
+
               <button 
                 disabled={isCheckingConfig}
                 onClick={async () => {

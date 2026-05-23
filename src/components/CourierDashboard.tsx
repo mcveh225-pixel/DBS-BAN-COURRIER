@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2, ChevronLeft, Bell, AlertCircle } from 'lucide-react';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2, ChevronLeft, Bell, AlertCircle, History } from 'lucide-react';
 import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel, deleteParcel } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
@@ -9,13 +9,15 @@ import CreateParcelForm from './CreateParcelForm';
 import ParcelDetailsPage from './ParcelDetailsModal';
 import ConfirmationModal from './ConfirmationModal';
 import NotificationModal from './NotificationModal';
+import ParcelHistoryView from './ParcelHistoryView';
 
 interface CourierDashboardProps {
   user: User;
 }
 
 export default function CourierDashboard({ user }: CourierDashboardProps) {
-  const [activeTab, setActiveTab] = useState<'overview' | 'parcels' | 'create' | 'bilan' | 'notifications'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'parcels' | 'create' | 'bilan' | 'notifications' | 'history'>('overview');
+  const [historyParcelId, setHistoryParcelId] = useState<string | undefined>(undefined);
   const [stats, setStats] = useState<any>(null);
   const [allParcels, setAllParcels] = useState<any[]>([]);
   const [users, setUsers] = useState<User[]>([]);
@@ -404,6 +406,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
         onDelete={handleDeleteParcel}
         userCity={user.city}
         userId={user.id}
+        onViewHistory={(parcelId) => {
+          setHistoryParcelId(parcelId);
+          setActiveTab('history');
+          setSelectedParcel(null);
+        }}
       />
     );
   }
@@ -417,7 +424,8 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             { key: 'parcels', label: 'Tous les colis', icon: Package },
             { key: 'bilan', label: 'Mon Bilan', icon: BarChart3 },
             { key: 'notifications', label: 'SMS Envoyés', icon: Bell },
-            { key: 'create', label: 'Nouveau colis', icon: Plus }
+            { key: 'create', label: 'Nouveau colis', icon: Plus },
+            { key: 'history', label: 'Historique', icon: History }
           ].map((tab) => (
             <button
               key={tab.key}
@@ -523,30 +531,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                           <Printer className="w-3 h-3" /> Reçu
                         </button>
                       )}
-                      {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
-                        <div className="flex gap-2">
-                          <button 
-                            onClick={() => setEditingParcel(parcel)}
-                            className="text-amber-400 hover:text-amber-300 flex items-center gap-1 text-xs"
-                          >
-                            <Edit className="w-3 h-3" /> Modifier
-                          </button>
-                          <button 
-                            onClick={() => handleArchiveParcel(parcel.id, parcel.code)}
-                            className="text-red-400 hover:text-red-300 flex items-center gap-1 text-xs"
-                          >
-                            <Archive className="w-3 h-3" /> Annuler
-                          </button>
-                        </div>
-                      )}
-                      {parcel.status === 'ANNULE' && (
-                        <button 
-                          onClick={() => handleDeleteParcel(parcel.id, parcel.code)}
-                          className="text-red-400 hover:text-red-300 flex items-center gap-1 text-xs"
-                        >
-                          <Trash2 className="w-3 h-3" /> Supprimer
-                        </button>
-                      )}
+                      {/* Only show receipt download if paid. Editing, cancelling, and deleting are admin-only. */}
                     </div>
                   </div>
                 </div>
@@ -618,6 +603,12 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
 
       {activeTab === 'parcels' && <ParcelList isAdmin={false} userCity={user.city || ''} onParcelClick={setSelectedParcel} />}
       {activeTab === 'create' && <CreateParcelForm userId={user.id} onCancel={() => setActiveTab('overview')} />}
+      {activeTab === 'history' && (
+        <ParcelHistoryView 
+          initialParcelId={historyParcelId} 
+          onSelectParcel={(parcel) => setHistoryParcelId(parcel.id)} 
+        />
+      )}
       
       {activeTab === 'bilan' && (
         <div className="space-y-6">

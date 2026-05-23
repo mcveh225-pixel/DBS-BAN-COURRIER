@@ -47,6 +47,8 @@ export const sendSMS = async (phone: string, message: string, type: string = 'SY
   try {
     const formattedPhone = formatPhoneNumber(phone);
     
+    const useSimulation = localStorage.getItem('sms_simulation_mode') === 'true';
+
     // Appel à notre API backend
     const response = await fetch('/api/send-sms', {
       method: 'POST',
@@ -56,7 +58,8 @@ export const sendSMS = async (phone: string, message: string, type: string = 'SY
       body: JSON.stringify({
         phone: formattedPhone,
         message: message,
-        type: type
+        type: type,
+        simulate: useSimulation
       })
     });
 
@@ -65,7 +68,8 @@ export const sendSMS = async (phone: string, message: string, type: string = 'SY
     if (response.ok && data.success) {
       if (data.simulated) {
         console.log(`📱 [SIMULATION] SMS envoyé à ${formattedPhone}:`, message);
-        showNotification(`SMS simulé pour ${formattedPhone}`, 'info');
+        const warningSuffix = data.warning ? ` (${data.warning})` : '';
+        showNotification(`SMS simulé pour ${formattedPhone}${warningSuffix}`, 'info');
         logNotification('SMS (Simulé)', formattedPhone, 'N/A', 'info');
       } else {
         console.log(`📱 SMS Orange envoyé à ${formattedPhone}`);
