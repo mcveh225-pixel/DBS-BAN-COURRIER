@@ -469,6 +469,28 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
 
 
 
+      <ConfirmationModal 
+        isOpen={confirmModal.isOpen}
+        title="Annuler le colis"
+        message={`Voulez-vous vraiment annuler le colis ${confirmModal.parcelCode} ? Le colis restera visible avec le statut "ANNULÉ" mais ne sera plus comptabilisé dans les revenus.`}
+        confirmLabel="Annuler le colis"
+        cancelLabel="Garder le colis"
+        onConfirm={confirmArchive}
+        onCancel={() => setConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
+        isDanger={true}
+      />
+
+      <ConfirmationModal 
+        isOpen={deleteConfirmModal.isOpen}
+        title="Supprimer définitivement"
+        message={`Voulez-vous vraiment supprimer DÉFINITIVEMENT le colis ${deleteConfirmModal.parcelCode} ? Cette action est irréversible.`}
+        confirmLabel="Supprimer"
+        cancelLabel="Annuler"
+        onConfirm={confirmDelete}
+        onCancel={() => setDeleteConfirmModal({ isOpen: false, parcelId: '', parcelCode: '' })}
+        isDanger={true}
+      />
+
       <NotificationModal 
         isOpen={notificationModal.isOpen}
         title={notificationModal.title}

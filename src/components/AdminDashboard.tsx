@@ -13,7 +13,9 @@ import {
   getDisplayStatus, 
   getStatusColor, 
   Parcel,
-  updateParcel
+  updateParcel,
+  archiveParcel,
+  deleteParcel
 } from '../lib/auth';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { 
@@ -535,6 +537,64 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleArchiveParcel = (parcelId: string, parcelCode: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Annuler le colis",
+      message: `Voulez-vous vraiment annuler le colis ${parcelCode} ? Le colis restera visible avec le statut "ANNULÉ" mais ne sera plus comptabilisé dans les revenus.`,
+      onConfirm: async () => {
+        const success = await archiveParcel(parcelId);
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        if (success) {
+          loadData();
+          setSelectedParcel(null);
+          setNotificationModal({
+            isOpen: true,
+            title: 'Succès',
+            message: 'Le colis a été annulé avec succès.',
+            type: 'success'
+          });
+        } else {
+          setNotificationModal({
+            isOpen: true,
+            title: 'Erreur',
+            message: "Erreur lors de l'annulation du colis.",
+            type: 'error'
+          });
+        }
+      }
+    });
+  };
+
+  const handleDeleteParcel = (parcelId: string, parcelCode: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Supprimer définitivement",
+      message: `Voulez-vous vraiment supprimer DÉFINITIVEMENT le colis ${parcelCode} ? Cette action est irréversible.`,
+      onConfirm: async () => {
+        const success = await deleteParcel(parcelId);
+        setConfirmModal(prev => ({ ...prev, isOpen: false }));
+        if (success) {
+          loadData();
+          setSelectedParcel(null);
+          setNotificationModal({
+            isOpen: true,
+            title: 'Succès',
+            message: 'Le colis a été supprimé définitivement.',
+            type: 'success'
+          });
+        } else {
+          setNotificationModal({
+            isOpen: true,
+            title: 'Erreur',
+            message: 'Erreur lors de la suppression du colis.',
+            type: 'error'
+          });
+        }
+      }
+    });
+  };
+
   if (editingParcel) {
     return (
       <div className="space-y-6 animate-in fade-in duration-300">
@@ -587,6 +647,8 @@ export default function AdminDashboard() {
           setSelectedParcel(null);
           setEditingParcel(p);
         }}
+        onCancel={handleArchiveParcel}
+        onDelete={handleDeleteParcel}
         userId={currentUser?.id}
         userCity=""
         onViewHistory={(parcelId) => {
