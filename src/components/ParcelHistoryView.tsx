@@ -44,6 +44,17 @@ export default function ParcelHistoryView({ initialParcelId, onSelectParcel }: P
     }
   };
 
+  // Auto-select parcel if searchQuery exactly matches a parcel code (case-insensitive)
+  useEffect(() => {
+    const trimmed = searchQuery.trim().toLowerCase();
+    if (trimmed !== '') {
+      const match = parcels.find(p => p.code.toLowerCase() === trimmed);
+      if (match && (!selectedParcel || selectedParcel.id !== match.id)) {
+        setSelectedParcel(match);
+      }
+    }
+  }, [searchQuery, parcels, selectedParcel]);
+
   const filteredParcels = searchQuery.trim() === '' 
     ? [] 
     : parcels.filter(p => 
@@ -210,6 +221,11 @@ export default function ParcelHistoryView({ initialParcelId, onSelectParcel }: P
             placeholder="Saisissez le code du colis (ex: DBS-YYMMDD-XXXX) ou le nom de l'expéditeur/destinataire..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && filteredParcels.length > 0) {
+                handleSelect(filteredParcels[0]);
+              }
+            }}
           />
         </div>
 

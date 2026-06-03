@@ -44,6 +44,18 @@ export interface DailyRevenue {
   deliveredParcels: number;
 }
 
+export interface AuditLog {
+  id: string;
+  parcelId: string;
+  parcelCode: string;
+  originalStatus: string;
+  newStatus: string;
+  changedBy: string;
+  changedByName: string;
+  timestamp: string;
+  notes?: string;
+}
+
 export const getDisplayStatus = (status: Parcel['status']) => {
   switch (status) {
     case 'ENREGISTRE': return 'ENREGISTRÉ';
@@ -662,7 +674,11 @@ export const archiveParcel = async (parcelId: string): Promise<boolean> => {
   // Update in local cache immediately
   const cached = getCachedParcels();
   const cachedIdx = cached.findIndex(p => p.id === parcelId);
+  let originalStatus = 'ENREGISTRE';
+  let parcelCode = '';
   if (cachedIdx !== -1) {
+    originalStatus = cached[cachedIdx].status;
+    parcelCode = cached[cachedIdx].code;
     cached[cachedIdx].status = 'ANNULE';
     saveCachedParcels(cached);
   }
@@ -717,6 +733,10 @@ export const archiveParcel = async (parcelId: string): Promise<boolean> => {
       .eq('id', parcelId);
     
     if (error) throw error;
+
+    // Log cancellation dynamically
+    logAuditAction(parcelId, parcelCode, originalStatus, 'ANNULE', 'Colis annulé par l\'administrateur');
+
     return true;
   } catch (error) {
     console.warn('Erreur de connexion. Annulation locale (gérée en tâche de fond):', error);
@@ -734,6 +754,10 @@ export const archiveParcel = async (parcelId: string): Promise<boolean> => {
     
     window.dispatchEvent(new CustomEvent('offline_action_queued'));
     triggerBackgroundSync();
+
+    // Log cancellation offline
+    logAuditAction(parcelId, parcelCode, originalStatus, 'ANNULE', 'Colis annulé par l\'administrateur (Hors-ligne)');
+
     return true;
   }
 };
@@ -745,8 +769,14 @@ export const deleteParcel = async (parcelId: string): Promise<boolean> => {
     return false;
   }
 
+  // Get info before cache removal
+  const cachedParcels = getCachedParcels();
+  const targetParcel = cachedParcels.find(p => p.id === parcelId);
+  const originalStatus = targetParcel?.status || 'ANNULE';
+  const parcelCode = targetParcel?.code || 'Inconnu';
+
   // Remove from cache locally immediately
-  const cached = getCachedParcels().filter(p => p.id !== parcelId);
+  const cached = cachedParcels.filter(p => p.id !== parcelId);
   saveCachedParcels(cached);
 
   try {
@@ -761,6 +791,10 @@ export const deleteParcel = async (parcelId: string): Promise<boolean> => {
       .eq('id', parcelId);
     
     if (error) throw error;
+
+    // Log deletion
+    logAuditAction(parcelId, parcelCode, originalStatus, 'SUPPRIME', 'Colis supprimé définitivement par l\'administrateur');
+
     return true;
   } catch (error) {
     console.warn('Erreur de connexion. Suppression locale (gérée en tâche de fond):', error);
@@ -778,6 +812,10 @@ export const deleteParcel = async (parcelId: string): Promise<boolean> => {
     
     window.dispatchEvent(new CustomEvent('offline_action_queued'));
     triggerBackgroundSync();
+
+    // Log deletion offline
+    logAuditAction(parcelId, parcelCode, originalStatus, 'SUPPRIME', 'Colis supprimé définitivement par l\'administrateur (Hors-ligne)');
+
     return true;
   }
 };
@@ -879,6 +917,9 @@ export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'cre
       console.error('Stats update error inside createParcel:', statsErr);
     }
     
+    // Log creation
+    logAuditAction(mapped.id, mapped.code, 'N/A', mapped.status, 'Création initiale du colis');
+
     return mapped;
   } catch (error) {
     console.warn('Erreur de connexion. Enregistrement local du colis (hors ligne):', error);
@@ -902,6 +943,9 @@ export const createParcel = async (parcelData: Omit<Parcel, 'id' | 'code' | 'cre
     window.dispatchEvent(new CustomEvent('offline_action_queued'));
     triggerBackgroundSync();
     
+    // Log creation offline
+    logAuditAction(localParcel.id, localParcel.code, 'N/A', localParcel.status, 'Création initiale du colis (Hors-ligne)');
+
     return localParcel;
   }
 };
@@ -1078,6 +1122,17 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
       runSideEffects();
     }
 
+    const oldStatus = currentParcel?.status || 'ENREGISTRE';
+    const oldIsPaid = currentParcel?.isPaid || false;
+
+    if (updates.status && updates.status !== oldStatus) {
+      logAuditAction(id, mapped.code, oldStatus, updates.status, 'Mise à jour du statut du colis');
+    } else if (updates.isPaid !== undefined && updates.isPaid !== oldIsPaid) {
+      logAuditAction(id, mapped.code, oldStatus, oldStatus, updates.isPaid ? 'Règlement des frais de transport' : 'Annulation du règlement');
+    } else {
+      logAuditAction(id, mapped.code, oldStatus, oldStatus, 'Modification des informations du colis');
+    }
+
     return mapped;
   } catch (error) {
     console.warn('Erreur de connexion. Mise à jour locale (gérée en tâche de fond):', error);
@@ -1102,6 +1157,17 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
 
     window.dispatchEvent(new CustomEvent('offline_action_queued'));
     triggerBackgroundSync();
+
+    const oldStatus = currentParcel?.status || 'ENREGISTRE';
+    const oldIsPaid = currentParcel?.isPaid || false;
+
+    if (updates.status && updates.status !== oldStatus) {
+      logAuditAction(id, localUpdatedParcel.code, oldStatus, updates.status, 'Mise à jour du statut du colis (Hors-ligne)');
+    } else if (updates.isPaid !== undefined && updates.isPaid !== oldIsPaid) {
+      logAuditAction(id, localUpdatedParcel.code, oldStatus, oldStatus, updates.isPaid ? 'Règlement des frais de transport (Hors-ligne)' : 'Annulation du règlement (Hors-ligne)');
+    } else {
+      logAuditAction(id, localUpdatedParcel.code, oldStatus, oldStatus, 'Modification des informations du colis (Hors-ligne)');
+    }
 
     return localUpdatedParcel;
   }
@@ -1226,5 +1292,118 @@ export const changePassword = async (userId: string, currentPassword: string, ne
   } catch (error) {
     console.error('Erreur lors du changement de mot de passe:', error);
     return false;
+  }
+};
+
+// --- AUDIT LOG SERVICES ---
+
+const getCachedAuditLogs = (): AuditLog[] => {
+  if (typeof window === 'undefined') return [];
+  const logs = localStorage.getItem('dbs_audit_logs');
+  return logs ? JSON.parse(logs) : [];
+};
+
+const saveCachedAuditLogs = (logs: AuditLog[]) => {
+  if (typeof window === 'undefined') return;
+  localStorage.setItem('dbs_audit_logs', JSON.stringify(logs));
+};
+
+export const logAuditAction = async (
+  parcelId: string,
+  parcelCode: string,
+  originalStatus: string,
+  newStatus: string,
+  notes?: string
+): Promise<AuditLog | null> => {
+  const currentUser = getCurrentUser();
+  if (!currentUser) return null;
+
+  const logEntry: AuditLog = {
+    id: `audit-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`,
+    parcelId,
+    parcelCode,
+    originalStatus,
+    newStatus,
+    changedBy: currentUser.id,
+    changedByName: currentUser.name,
+    timestamp: new Date().toISOString(),
+    notes
+  };
+
+  // 1. Save to local storage cache immediately
+  const cached = getCachedAuditLogs();
+  cached.unshift(logEntry);
+  if (cached.length > 200) cached.pop();
+  saveCachedAuditLogs(cached);
+
+  // 2. Try to insert into Supabase
+  try {
+    const { error } = await supabase
+      .from('audit_logs')
+      .insert([{
+        id: logEntry.id,
+        parcel_id: logEntry.parcelId,
+        parcel_code: logEntry.parcelCode,
+        original_status: logEntry.originalStatus,
+        new_status: logEntry.newStatus,
+        changed_by: logEntry.changedBy,
+        changed_by_name: logEntry.changedByName,
+        timestamp: logEntry.timestamp,
+        notes: logEntry.notes
+      }]);
+    if (error) {
+      console.warn('Erreur Supabase lors de l\'enregistrement de l\'audit:', error);
+    }
+  } catch (err) {
+    console.warn('Erreur réseau lors de l\'enregistrement de l\'audit:', err);
+  }
+
+  // Dispatch event so that listening UI components update reactive state
+  if (typeof window !== 'undefined') {
+    window.dispatchEvent(new CustomEvent('audit_log_added', { detail: logEntry }));
+  }
+
+  return logEntry;
+};
+
+export const getAuditLogs = async (): Promise<AuditLog[]> => {
+  try {
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .order('timestamp', { ascending: false })
+      .limit(100);
+
+    if (error) throw error;
+
+    const mappedLogs: AuditLog[] = (data || []).map((item: any) => ({
+      id: item.id,
+      parcelId: item.parcel_id,
+      parcelCode: item.parcel_code,
+      originalStatus: item.original_status,
+      newStatus: item.new_status,
+      changedBy: item.changed_by,
+      changedByName: item.changed_by_name,
+      timestamp: item.timestamp,
+      notes: item.notes
+    }));
+
+    const localLogs = getCachedAuditLogs();
+    const merged = [...localLogs];
+    
+    for (const dbLog of mappedLogs) {
+      if (!merged.some(l => l.id === dbLog.id)) {
+        merged.push(dbLog);
+      }
+    }
+
+    merged.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const finalLogs = merged.slice(0, 200);
+    saveCachedAuditLogs(finalLogs);
+    
+    return finalLogs.slice(0, 100);
+  } catch (error) {
+    console.warn('Impossible de charger les logs d\'audit de Supabase, retour du cache local:', error);
+    return getCachedAuditLogs();
   }
 };

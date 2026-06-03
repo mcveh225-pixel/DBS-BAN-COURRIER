@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell, CheckCircle, AlertCircle, History, ChevronLeft, Edit } from 'lucide-react';
+import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell, CheckCircle, AlertCircle, History, ChevronLeft, Edit, Activity } from 'lucide-react';
 import { 
   getUsers, 
   getParcels, 
@@ -15,7 +15,9 @@ import {
   Parcel,
   updateParcel,
   archiveParcel,
-  deleteParcel
+  deleteParcel,
+  AuditLog,
+  getAuditLogs
 } from '../lib/auth';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { 
@@ -45,7 +47,7 @@ export default function AdminDashboard() {
   const [showCreateAdminModal, setShowCreateAdminModal] = useState(false);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
-  const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications' | 'history'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications' | 'history' | 'audit'>('overview');
   const [historyParcelId, setHistoryParcelId] = useState<string | undefined>(undefined);
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
   const [notificationLogs, setNotificationLogs] = useState<any[]>([]);
@@ -55,6 +57,10 @@ export default function AdminDashboard() {
   const [isSendingTest, setIsSendingTest] = useState(false);
   const [courierStats, setCourierStats] = useState<Record<string, any>>({});
   const [selectedMonth, setSelectedMonth] = useState<string>(new Date().toISOString().slice(0, 7)); // YYYY-MM
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [isAuditsLoading, setIsAuditsLoading] = useState(false);
+  const [auditSearch, setAuditSearch] = useState('');
+  const [auditFilter, setAuditFilter] = useState<string>('ALL');
   const [breakdownModal, setBreakdownModal] = useState<{
     isOpen: boolean;
     title: string;
@@ -91,14 +97,18 @@ export default function AdminDashboard() {
   const currentUser = getCurrentUser();
 
   const loadData = async () => {
-    const [usersData, parcelsData, revenuesData] = await Promise.all([
+    setIsAuditsLoading(true);
+    const [usersData, parcelsData, revenuesData, logsData] = await Promise.all([
       getUsers(),
       getParcels(),
-      getDailyRevenues()
+      getDailyRevenues(),
+      getAuditLogs()
     ]);
     setUsers(usersData);
     setParcels(parcelsData);
     setDailyRevenues(revenuesData);
+    setAuditLogs(logsData);
+    setIsAuditsLoading(false);
 
     // Load notification logs
     const logs = JSON.parse(localStorage.getItem('notification_logs') || '[]');
@@ -130,6 +140,20 @@ export default function AdminDashboard() {
       if (interval) clearInterval(interval);
     };
   }, [activeTab]);
+
+  useEffect(() => {
+    // Listen to real-time additions of audit logs
+    const handleAuditAdded = (e: Event) => {
+      const customEvent = e as CustomEvent;
+      if (customEvent.detail) {
+        setAuditLogs(prev => [customEvent.detail, ...prev].slice(0, 100));
+      }
+    };
+    window.addEventListener('audit_log_added', handleAuditAdded);
+    return () => {
+       window.removeEventListener('audit_log_added', handleAuditAdded);
+    };
+  }, []);
 
   useEffect(() => {
     loadData();
@@ -670,7 +694,8 @@ export default function AdminDashboard() {
             { key: 'parcels', label: 'Colis', icon: Package },
             { key: 'revenue', label: 'Revenus', icon: DollarSign },
             { key: 'notifications', label: 'SMS Envoyés', icon: Bell },
-            { key: 'history', label: 'Historique', icon: History }
+            { key: 'history', label: 'Historique', icon: History },
+            { key: 'audit', label: 'Audit Log', icon: Activity }
           ].map((tab) => (
             <button
               key={tab.key}
@@ -1070,6 +1095,280 @@ export default function AdminDashboard() {
                   </div>
                 )}
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {activeTab === 'audit' && (
+        <div className="space-y-6 animate-in fade-in duration-300">
+          <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900/40 p-6 rounded-2xl border border-white/15">
+            <div>
+              <h2 className="text-xl font-extrabold text-white flex items-center gap-2">
+                <Activity className="w-5 h-5 text-blue-500" />
+                Journal d'activité d'audit (Audit Log)
+              </h2>
+              <p className="text-gray-400 text-xs mt-1">
+                Visualisez les dernières modifications de statut des colis, règlements financiers, et suppressions faites par la flotte de DBS-BAN.
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button 
+                onClick={async () => {
+                  setIsAuditsLoading(true);
+                  const freshAudits = await getAuditLogs();
+                  setAuditLogs(freshAudits);
+                  setIsAuditsLoading(false);
+                }}
+                disabled={isAuditsLoading}
+                className="px-4 py-2 bg-white/5 border border-white/10 text-white rounded-lg hover:bg-white/10 text-xs font-semibold select-none flex items-center gap-1.5 transition-all text-gray-300 hover:text-white cursor-pointer"
+              >
+                {isAuditsLoading ? 'Actualisation...' : 'Actualiser les logs'}
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Metrics Section */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="bg-slate-900/35 border border-white/10 hover:border-white/15 transition-all rounded-xl p-4">
+              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block">Total Événements</span>
+              <span className="text-xl font-extrabold text-white block mt-1">{auditLogs.length}</span>
+            </div>
+            <div className="bg-slate-900/35 border border-white/10 hover:border-white/15 transition-all rounded-xl p-4">
+              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block">Preuves de Création</span>
+              <span className="text-xl font-extrabold text-blue-400 block mt-1">
+                {auditLogs.filter(log => log.originalStatus === 'N/A' || log.newStatus === 'ENREGISTRE').length}
+              </span>
+            </div>
+            <div className="bg-slate-900/35 border border-white/10 hover:border-white/15 transition-all rounded-xl p-4">
+              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block font-medium">Colis Annulés</span>
+              <span className="text-xl font-extrabold text-red-400 block mt-1">
+                {auditLogs.filter(log => log.newStatus === 'ANNULE').length}
+              </span>
+            </div>
+            <div className="bg-slate-900/35 border border-white/10 hover:border-white/15 transition-all rounded-xl p-4">
+              <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider block">Suppressions Définitives</span>
+              <span className="text-xl font-extrabold text-orange-400 block mt-1">
+                {auditLogs.filter(log => log.newStatus === 'SUPPRIME').length}
+              </span>
+            </div>
+          </div>
+
+          {/* Toolbar Search & Filter Pills */}
+          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-5 space-y-4">
+            <div className="flex flex-col md:flex-row gap-3">
+              <div className="flex-1">
+                <input
+                  type="text"
+                  placeholder="Rechercher par code colis, responsable ou mot clé..."
+                  className="w-full bg-black/30 border border-white/10 rounded-lg px-4 py-2.5 text-white outline-none focus:border-blue-500 text-sm transition-colors"
+                  value={auditSearch}
+                  onChange={(e) => setAuditSearch(e.target.value)}
+                />
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <span className="text-xs text-gray-400 hidden sm:inline select-none">Catégorie:</span>
+                <select
+                  value={auditFilter}
+                  onChange={(e) => setAuditFilter(e.target.value)}
+                  className="bg-black/30 text-white outline-none border border-white/10 rounded-lg px-3 py-2 text-sm [color-scheme:dark]"
+                >
+                  <option value="ALL">Tous les événements</option>
+                  <option value="CREATE">Enregistrements/Créations</option>
+                  <option value="STATUS">Changements de statut</option>
+                  <option value="PAYMENT">Paiements/Règlements</option>
+                  <option value="ANNULE">Annulations</option>
+                  <option value="SUPPRIME">Suppressions</option>
+                </select>
+              </div>
+            </div>
+
+            {/* Quick Pills filter for UX */}
+            <div className="flex flex-wrap gap-2">
+              {[
+                { key: 'ALL', label: 'Tous' },
+                { key: 'CREATE', label: 'Créations' },
+                { key: 'STATUS', label: 'Statuts' },
+                { key: 'PAYMENT', label: 'Paiements' },
+                { key: 'ANNULE', label: 'Annulations' },
+                { key: 'SUPPRIME', label: 'Suppressions' }
+              ].map(pill => (
+                <button
+                  key={pill.key}
+                  onClick={() => setAuditFilter(pill.key)}
+                  className={`px-3 py-1 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
+                    auditFilter === pill.key 
+                      ? 'bg-blue-600/35 border-blue-500 text-white shadow-md' 
+                      : 'bg-black/10 border-white/5 text-gray-400 hover:text-white hover:bg-white/5'
+                  }`}
+                >
+                  {pill.label}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Audit Logs Table Panel */}
+          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+            <h3 className="text-base font-bold text-white mb-4">Parcours d'audit chronologique</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-left whitespace-nowrap">
+                <thead>
+                  <tr className="border-b border-white/10 text-xs font-bold text-gray-400 uppercase tracking-wider">
+                    <th className="py-3 px-4">Horodatage</th>
+                    <th className="py-3 px-4">Code Colis</th>
+                    <th className="py-3 px-4">Responsable</th>
+                    <th className="py-3 px-4">Transition</th>
+                    <th className="py-3 px-4">Notes & Événements</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-white/5 text-sm">
+                  {isAuditsLoading && auditLogs.length === 0 ? (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-gray-500">
+                        <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+                        Chargement des journaux de traçabilité...
+                      </td>
+                    </tr>
+                  ) : auditLogs.filter(log => {
+                    const matchesSearch = 
+                      log.parcelCode.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                      log.changedByName.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                      (log.notes && log.notes.toLowerCase().includes(auditSearch.toLowerCase()));
+
+                    if (auditFilter === 'ALL') return matchesSearch;
+                    if (auditFilter === 'CREATE') return matchesSearch && (log.originalStatus === 'N/A' || log.newStatus === 'ENREGISTRE');
+                    if (auditFilter === 'STATUS') return matchesSearch && log.originalStatus !== 'N/A' && log.originalStatus !== log.newStatus && log.newStatus !== 'ANNULE' && log.newStatus !== 'SUPPRIME';
+                    if (auditFilter === 'PAYMENT') return matchesSearch && log.notes && (log.notes.includes('Frais') || log.notes.includes('Règlement') || log.notes.includes('payés') || log.notes.includes('paiement') || log.notes.includes('remboursement') || log.notes.includes('transport'));
+                    if (auditFilter === 'ANNULE') return matchesSearch && log.newStatus === 'ANNULE';
+                    if (auditFilter === 'SUPPRIME') return matchesSearch && log.newStatus === 'SUPPRIME';
+                    return matchesSearch;
+                  }).length > 0 ? (
+                    auditLogs.filter(log => {
+                      const matchesSearch = 
+                        log.parcelCode.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                        log.changedByName.toLowerCase().includes(auditSearch.toLowerCase()) ||
+                        (log.notes && log.notes.toLowerCase().includes(auditSearch.toLowerCase()));
+
+                      if (auditFilter === 'ALL') return matchesSearch;
+                      if (auditFilter === 'CREATE') return matchesSearch && (log.originalStatus === 'N/A' || log.newStatus === 'ENREGISTRE');
+                      if (auditFilter === 'STATUS') return matchesSearch && log.originalStatus !== 'N/A' && log.originalStatus !== log.newStatus && log.newStatus !== 'ANNULE' && log.newStatus !== 'SUPPRIME';
+                      if (auditFilter === 'PAYMENT') return matchesSearch && log.notes && (log.notes.includes('Frais') || log.notes.includes('Règlement') || log.notes.includes('payés') || log.notes.includes('paiement') || log.notes.includes('remboursement') || log.notes.includes('transport'));
+                      if (auditFilter === 'ANNULE') return matchesSearch && log.newStatus === 'ANNULE';
+                      if (auditFilter === 'SUPPRIME') return matchesSearch && log.newStatus === 'SUPPRIME';
+                      return matchesSearch;
+                    }).map((log) => (
+                      <tr key={log.id} className="hover:bg-white/5 transition-colors group">
+                        {/* Time Column */}
+                        <td className="py-3 px-4 font-mono text-xs text-gray-400">
+                          {new Date(log.timestamp).toLocaleString('fr-FR', {
+                            day: '2-digit',
+                            month: '2-digit',
+                            year: '2-digit',
+                            hour: '2-digit',
+                            minute: '2-digit',
+                            second: '2-digit'
+                          })}
+                        </td>
+
+                        {/* Interactive Parcel Code Badge */}
+                        <td className="py-3 px-4">
+                          {log.newStatus !== 'SUPPRIME' ? (
+                            <button
+                              onClick={() => {
+                                setHistoryParcelId(log.parcelCode);
+                                setActiveTab('history');
+                              }}
+                              className="font-mono text-xs font-black text-blue-400 hover:text-blue-300 transition-colors uppercase tracking-wider flex items-center gap-1 bg-blue-500/10 px-2 py-1 rounded border border-blue-500/15 cursor-pointer max-w-fit"
+                              title="Suivre le cycle historique du colis"
+                            >
+                              {log.parcelCode}
+                            </button>
+                          ) : (
+                            <span className="font-mono text-xs text-gray-500 px-2 py-1 bg-white/5 rounded border border-white/5">
+                              {log.parcelCode}
+                            </span>
+                          )}
+                        </td>
+
+                        {/* User responsible */}
+                        <td className="py-3 px-4">
+                          <div className="flex flex-col">
+                            <span className="text-white font-medium text-xs sm:text-sm">{log.changedByName}</span>
+                            <span className="text-[10px] text-gray-500 font-mono">ID: {log.changedBy}</span>
+                          </div>
+                        </td>
+
+                        {/* Status Transition Badges */}
+                        <td className="py-3 px-4">
+                          <div className="flex items-center gap-1.5">
+                            {log.originalStatus !== 'N/A' && (
+                              <>
+                                <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase ${getStatusColor(log.originalStatus as any)}`}>
+                                  {getDisplayStatus(log.originalStatus as any)}
+                                </span>
+                                <span className="text-gray-600">→</span>
+                              </>
+                            )}
+                            <span className={`px-2 py-0.5 rounded text-[10px] font-bold text-white uppercase ${
+                              log.newStatus === 'SUPPRIME' ? 'bg-red-950 text-red-400 border border-red-500/20' : getStatusColor(log.newStatus as any)
+                            }`}>
+                              {log.newStatus === 'SUPPRIME' ? 'SUPPRIMÉ' : getDisplayStatus(log.newStatus as any)}
+                            </span>
+                          </div>
+                        </td>
+
+                        {/* Actions Description/Notes Column */}
+                        <td className="py-3 px-4">
+                          <span className={`text-xs ${
+                            log.newStatus === 'ANNULE' || log.newStatus === 'SUPPRIME' 
+                              ? 'text-red-400 font-medium' 
+                              : log.notes && (log.notes.includes('frais') || log.notes.includes('Règlement'))
+                                ? 'text-emerald-400 font-semibold'
+                                : 'text-gray-300'
+                          }`}>
+                            {log.notes || 'Rien à signaler'}
+                          </span>
+                        </td>
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td colSpan={5} className="py-12 text-center text-gray-500 italic">
+                        <div className="flex flex-col items-center justify-center space-y-4">
+                          <p>Aucun log d'activité d'audit ne correspond à vos filtres.</p>
+                          {(() => {
+                            const trimmed = auditSearch.trim();
+                            if (!trimmed) return null;
+                            const matched = parcels.find(p => p.code.toLowerCase() === trimmed.toLowerCase());
+                            if (!matched) return null;
+                            return (
+                              <div className="bg-blue-600/10 border border-blue-500/20 rounded-xl p-4 max-w-md w-full text-left not-italic shadow-lg mx-auto">
+                                <p className="text-sm font-bold text-white mb-1.5 flex items-center gap-1.5">
+                                  <span className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse inline-block" />
+                                  Colis trouvé dans le système !
+                                </p>
+                                <p className="text-xs text-gray-300 mb-3 leading-relaxed">
+                                  Le colis <span className="text-white font-mono font-bold uppercase">{matched.code}</span> (de {matched.senderName} à destination de {matched.destinationCity}) est bien présent. Il n'a simplement pas encore d'événements de modifications enregistrés dans ce journal.
+                                </p>
+                                <button
+                                  onClick={() => {
+                                    setHistoryParcelId(matched.code);
+                                    setActiveTab('history');
+                                  }}
+                                  className="w-full py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-black transition-all flex items-center justify-center gap-1 cursor-pointer"
+                                >
+                                  <span>Voir l'historique de suivi complet</span>
+                                </button>
+                              </div>
+                            );
+                          })()}
+                        </div>
+                      </td>
+                    </tr>
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         </div>

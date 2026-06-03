@@ -45,7 +45,20 @@ CREATE TABLE IF NOT EXISTS daily_revenues (
   delivered_parcels INTEGER DEFAULT 0
 );
 
--- 4. Insertion de l'administrateur par défaut
+-- 4. Table des journaux d'activité (Audit logs)
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id TEXT PRIMARY KEY,
+  parcel_id TEXT NOT NULL,
+  parcel_code TEXT NOT NULL,
+  original_status TEXT NOT NULL,
+  new_status TEXT NOT NULL,
+  changed_by TEXT NOT NULL,
+  changed_by_name TEXT NOT NULL,
+  timestamp TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  notes TEXT
+);
+
+-- 5. Insertion de l'administrateur par défaut
 INSERT INTO users (id, email, name, role, password, created_at)
 VALUES ('admin-1', 'admin@dbs-ban.ci', 'Administrateur Principal', 'admin', 'admin123', NOW())
 ON CONFLICT (id) DO NOTHING;
