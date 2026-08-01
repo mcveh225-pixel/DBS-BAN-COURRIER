@@ -163,20 +163,9 @@ export const logNotification = (action: string, phone: string, parcelCode: strin
   const isSimulated = action.toLowerCase().includes('simulé');
   const isError = action.toLowerCase().includes('erreur') || parcelCode === 'FAIL';
   
-  const logEntry = {
-    timestamp,
-    action,
-    phone,
-    parcelCode,
-    status: forcedStatus === 'success' ? 'real' : (forcedStatus === 'info' ? 'simulated' : (forcedStatus || (isError ? 'error' : (isSimulated ? 'simulated' : 'real'))))
-  };
+  const status = forcedStatus === 'success' ? 'real' : (forcedStatus === 'info' ? 'simulated' : (forcedStatus || (isError ? 'error' : (isSimulated ? 'simulated' : 'real'))));
 
-  const existingLogs = localStorage.getItem('notification_logs') || '[]';
-  const logs = JSON.parse(existingLogs);
-  logs.unshift(logEntry);
-  if (logs.length > 100) logs.splice(100);
-  localStorage.setItem('notification_logs', JSON.stringify(logs));
-  console.log(`[${timestamp}] ${action} - ${parcelCode} - ${phone}`);
+  console.log(`[Notification Log ${timestamp}] Status: ${status} | Action: ${action} | Parcel: ${parcelCode} | Phone: ${phone}`);
 };
 
 export const getSMSLogs = async () => {
