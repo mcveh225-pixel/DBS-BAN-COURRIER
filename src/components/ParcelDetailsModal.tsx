@@ -236,8 +236,8 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
               </div>
               
               <div className="space-y-3">
-                {/* Actions for Creator or Admin */}
-                {(userId === parcel.createdBy || userIsAdmin) && (
+                {/* Actions for Creator, Departure Station, or Admin */}
+                {(userId === parcel.createdBy || userCity === parcel.originCity || userIsAdmin) && (
                   <>
                     <p className="text-[10px] text-gray-500 uppercase font-black tracking-[0.2em] mb-2 px-1">Actions Port de Départ</p>
                     {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (

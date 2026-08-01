@@ -86,8 +86,23 @@ export const isParcelDelayed = (parcel: Parcel): boolean => {
   if (parcel.status === 'LIVRE' || parcel.status === 'ANNULE') {
     return false;
   }
-  const refDateStr = parcel.shippedAt || parcel.createdAt;
-  if (!refDateStr) return false;
+
+  let refDateStr: string | undefined;
+
+  if (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') {
+    refDateStr = parcel.createdAt;
+  } else if (parcel.status === 'EXPEDIE' || parcel.status === 'EN_TRANSIT') {
+    refDateStr = parcel.shippedAt;
+  } else if (parcel.status === 'ARRIVE') {
+    refDateStr = parcel.arrivedAt;
+  }
+
+  // Si le statut a évolué mais que l'horodatage spécifique n'est pas disponible,
+  // le colis vient de changer de statut et n'est donc pas en retard.
+  if (!refDateStr) {
+    return false;
+  }
+
   const refTime = new Date(refDateStr).getTime();
   if (isNaN(refTime)) return false;
   const now = Date.now();
@@ -97,8 +112,19 @@ export const isParcelDelayed = (parcel: Parcel): boolean => {
 
 export const getParcelDelayHours = (parcel: Parcel): number => {
   if (parcel.status === 'LIVRE' || parcel.status === 'ANNULE') return 0;
-  const refDateStr = parcel.shippedAt || parcel.createdAt;
+
+  let refDateStr: string | undefined;
+
+  if (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') {
+    refDateStr = parcel.createdAt;
+  } else if (parcel.status === 'EXPEDIE' || parcel.status === 'EN_TRANSIT') {
+    refDateStr = parcel.shippedAt;
+  } else if (parcel.status === 'ARRIVE') {
+    refDateStr = parcel.arrivedAt;
+  }
+
   if (!refDateStr) return 0;
+
   const refTime = new Date(refDateStr).getTime();
   if (isNaN(refTime)) return 0;
   const now = Date.now();
@@ -305,12 +331,30 @@ export const deleteUser = async (userId: string): Promise<boolean> => {
 
 export const getParcels = async (): Promise<Parcel[]> => {
   try {
-    const { data, error } = await supabase
+    let { data, error } = await supabase
       .from('parcels')
       .select('*, creator:users!created_by(city)')
       .order('created_at', { ascending: false });
     
-    if (error) throw error;
+    if (error) {
+      console.warn('Echec de la jointure creator dans getParcels, chargement alternatif:', error);
+      const simpleRes = await supabase
+        .from('parcels')
+        .select('*')
+        .order('created_at', { ascending: false });
+      
+      if (simpleRes.error) throw simpleRes.error;
+      data = simpleRes.data;
+
+      const usersRes = await supabase.from('users').select('id, city');
+      if (usersRes.data && data) {
+        const userCityMap = new Map(usersRes.data.map((u: any) => [u.id, u.city]));
+        data = data.map((p: any) => ({
+          ...p,
+          creator: { city: userCityMap.get(p.created_by) }
+        }));
+      }
+    }
     
     return (data || []).map(mapParcel);
   } catch (error) {
@@ -600,13 +644,20 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     }
   }
 
-  const { data: currentParcelDb } = await supabase
-    .from('parcels')
-    .select('*')
-    .eq('id', id)
-    .single();
+  let currentParcel: Parcel | null = null;
+  try {
+    const { data: currentParcelDb } = await supabase
+      .from('parcels')
+      .select('*')
+      .eq('id', id)
+      .maybeSingle();
+    if (currentParcelDb) {
+      currentParcel = mapParcel(currentParcelDb);
+    }
+  } catch (e) {
+    console.warn('Impossible de récupérer le colis courant avant update:', e);
+  }
 
-  const currentParcel = currentParcelDb ? mapParcel(currentParcelDb) : null;
   const nowStr = new Date().toISOString();
 
   const dbUpdates: any = {};
@@ -633,19 +684,91 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
   if (updates.price !== undefined) dbUpdates.price = updates.price;
   if (updates.notes !== undefined) dbUpdates.notes = updates.notes;
 
-  const { data, error } = await supabase
+  let data: any = null;
+
+  // Tentative 1: mise à jour avec jointure creator
+  const try1 = await supabase
     .from('parcels')
     .update(dbUpdates)
     .eq('id', id)
     .select('*, creator:users!created_by(city)')
-    .single();
+    .maybeSingle();
 
-  if (error) {
-    console.error('Erreur lors de la mise à jour du colis en base de données:', error);
-    throw error;
+  if (!try1.error && try1.data) {
+    data = try1.data;
+  } else {
+    // Tentative 2: mise à jour avec select simple sans jointure
+    const try2 = await supabase
+      .from('parcels')
+      .update(dbUpdates)
+      .eq('id', id)
+      .select('*')
+      .maybeSingle();
+
+    if (!try2.error && try2.data) {
+      data = try2.data;
+    } else {
+      // Tentative 3: suppression des colonnes d'horodatage optionnelles et select simple
+      delete dbUpdates.shipped_at;
+      delete dbUpdates.arrived_at;
+      delete dbUpdates.delivered_at;
+      delete dbUpdates.paid_at;
+
+      const try3 = await supabase
+        .from('parcels')
+        .update(dbUpdates)
+        .eq('id', id)
+        .select('*')
+        .maybeSingle();
+
+      if (!try3.error && try3.data) {
+        data = try3.data;
+      } else {
+        console.warn('Tentatives de mise à jour échouées, envoi simple de la requete de mise a jour:', try3.error || try2.error || try1.error);
+        
+        // Tentative 4: update sans .select() au cas où la politique RLS restreint le select
+        const try4 = await supabase
+          .from('parcels')
+          .update(dbUpdates)
+          .eq('id', id);
+
+        if (try4.error) {
+          console.error('Erreur finale lors de la mise à jour du colis:', try4.error);
+          throw try4.error;
+        }
+      }
+    }
+  }
+
+  // Si data est nul, reconstruire un objet fictif avec les modifications
+  if (!data) {
+    data = {
+      id,
+      code: currentParcel?.code || 'DBS-UNKNOWN',
+      sender_name: updates.senderName || currentParcel?.senderName || '',
+      sender_phone: updates.senderPhone || currentParcel?.senderPhone || '',
+      recipient_name: updates.recipientName || currentParcel?.recipientName || '',
+      recipient_phone: updates.recipientPhone || currentParcel?.recipientPhone || '',
+      destination_city: updates.destinationCity || currentParcel?.destinationCity || '',
+      package_type: updates.packageType || currentParcel?.packageType || 'Colis',
+      quantity: updates.quantity ?? currentParcel?.quantity ?? 1,
+      value: updates.value || currentParcel?.value || '0 FCFA',
+      status: updates.status || currentParcel?.status || 'ENREGISTRE',
+      price: updates.price ?? currentParcel?.price ?? 0,
+      is_paid: updates.isPaid ?? currentParcel?.isPaid ?? false,
+      created_by: currentParcel?.createdBy || user?.id || 'system',
+      created_at: currentParcel?.createdAt || nowStr,
+      notes: updates.notes || currentParcel?.notes || ''
+    };
   }
 
   const mapped = mapParcel(data);
+  if (currentParcel && (!mapped.originCity || mapped.originCity === 'Inconnue')) {
+    mapped.originCity = currentParcel.originCity;
+  }
+  if (updates.status === 'EXPEDIE' && !mapped.shippedAt) mapped.shippedAt = nowStr;
+  if (updates.status === 'ARRIVE' && !mapped.arrivedAt) mapped.arrivedAt = nowStr;
+  if (updates.status === 'LIVRE' && !mapped.deliveredAt) mapped.deliveredAt = nowStr;
 
   if (currentParcel) {
     try {

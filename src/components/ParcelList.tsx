@@ -116,24 +116,79 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
     const parcel = parcels.find(p => p.id === parcelId);
     if (!parcel) return;
 
-    const updates: Partial<Parcel> = { status: newStatus };
-    const updated = await updateParcel(parcelId, updates);
-    if (updated) {
-      setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
-      if (selectedParcel?.id === parcelId) {
-        setSelectedParcel(updated);
+    try {
+      const updates: Partial<Parcel> = { status: newStatus };
+      const updated = await updateParcel(parcelId, updates);
+      if (updated) {
+        setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
+        if (selectedParcel?.id === parcelId) {
+          setSelectedParcel(updated);
+        }
+        setNotificationModal({
+          isOpen: true,
+          title: 'Statut mis à jour',
+          message: `Le colis ${updated.code} est désormais : ${getDisplayStatus(updated.status)}.`,
+          type: 'success'
+        });
       }
+    } catch (err: any) {
+      console.error('Erreur de mise à jour du statut:', err);
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur',
+        message: 'Erreur lors de la mise à jour du statut du colis : ' + (err?.message || 'Erreur réseau'),
+        type: 'error'
+      });
     }
   };
 
   const handlePayment = async (parcelId: string) => {
-    const updated = await updateParcel(parcelId, { isPaid: true, status: 'PAYE' });
-    if (updated) setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
+    try {
+      const updated = await updateParcel(parcelId, { isPaid: true, status: 'PAYE' });
+      if (updated) {
+        setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
+        setNotificationModal({
+          isOpen: true,
+          title: 'Paiement enregistré',
+          message: `Le paiement du colis ${updated.code} a été confirmé.`,
+          type: 'success'
+        });
+      }
+    } catch (err: any) {
+      console.error('Erreur lors du paiement:', err);
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur',
+        message: 'Impossible d\'enregistrer le paiement : ' + (err?.message || 'Erreur réseau'),
+        type: 'error'
+      });
+    }
   };
 
   const handleShip = async (parcelId: string) => {
-    const updated = await updateParcel(parcelId, { status: 'EXPEDIE' });
-    if (updated) setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
+    try {
+      const updated = await updateParcel(parcelId, { status: 'EXPEDIE' });
+      if (updated) {
+        setParcels(prev => prev.map(p => p.id === parcelId ? updated : p));
+        if (selectedParcel?.id === parcelId) {
+          setSelectedParcel(updated);
+        }
+        setNotificationModal({
+          isOpen: true,
+          title: 'Colis Expédié',
+          message: `Le colis ${updated.code} est désormais marqué comme EXPÉDIÉ avec succès.`,
+          type: 'success'
+        });
+      }
+    } catch (err: any) {
+      console.error('Erreur lors de l\'expédition:', err);
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur lors de l\'expédition',
+        message: 'Impossible de marquer le colis comme expédié : ' + (err?.message || 'Erreur réseau ou base de données'),
+        type: 'error'
+      });
+    }
   };
 
   const handleArchiveParcel = (parcelId: string, parcelCode: string) => {
@@ -482,9 +537,9 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                   </td>
                 <td className="py-4">
                   <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-                    {!parcel.isPaid && parcel.createdBy === currentUser?.id && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-blue-700 transition-colors"><CreditCard className="w-3 h-3" /> Payer</button>}
-                    {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.createdBy === currentUser?.id || isAdmin) && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors"><Send className="w-3 h-3" /> Expédier</button>}
-                    {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
+                    {!parcel.isPaid && (parcel.createdBy === currentUser?.id || parcel.originCity === userCity || isAdmin) && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-blue-700 transition-colors"><CreditCard className="w-3 h-3" /> Payer</button>}
+                    {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.createdBy === currentUser?.id || parcel.originCity === userCity || isAdmin) && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors"><Send className="w-3 h-3" /> Expédier</button>}
+                    {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id || parcel.originCity === userCity) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
                     
                     {isAdmin && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
                       <button 

@@ -267,18 +267,31 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   };
 
   const handleStatusUpdate = async (parcelId: string, newStatus: Parcel['status']) => {
-    const parcel = allParcels.find(p => p.id === parcelId);
-    if (!parcel) return;
-
-    const updates: Partial<Parcel> = { status: newStatus };
-    const updated = await updateParcel(parcelId, updates);
-    if (updated) {
-      // Update local state for the modal
-      setDetailsModal(prev => ({
-        ...prev,
-        parcels: prev.parcels.map(p => p.id === parcelId ? updated : p)
-      }));
-      loadData();
+    try {
+      const parcel = allParcels.find(p => p.id === parcelId);
+      const updates: Partial<Parcel> = { status: newStatus };
+      const updated = await updateParcel(parcelId, updates);
+      if (updated) {
+        setDetailsModal(prev => ({
+          ...prev,
+          parcels: prev.parcels.map(p => p.id === parcelId ? updated : p)
+        }));
+        await loadData();
+        setNotificationModal({
+          isOpen: true,
+          title: newStatus === 'EXPEDIE' ? 'Colis Expédié' : 'Statut Mis à Jour',
+          message: `Le colis ${updated.code} est désormais : ${getDisplayStatus(newStatus)}.`,
+          type: 'success'
+        });
+      }
+    } catch (err: any) {
+      console.error('Erreur lors de la mise à jour du statut:', err);
+      setNotificationModal({
+        isOpen: true,
+        title: 'Erreur',
+        message: 'Impossible de modifier le statut du colis : ' + (err?.message || 'Erreur réseau ou base de données'),
+        type: 'error'
+      });
     }
   };
 

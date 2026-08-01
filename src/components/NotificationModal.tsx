@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect } from 'react';
 import { Info, X, CheckCircle, AlertCircle } from 'lucide-react';
 
 interface NotificationModalProps {
@@ -7,6 +7,7 @@ interface NotificationModalProps {
   message: string;
   type?: 'info' | 'success' | 'error';
   onClose: () => void;
+  autoCloseDuration?: number;
 }
 
 export default function NotificationModal({
@@ -14,67 +15,86 @@ export default function NotificationModal({
   title,
   message,
   type = 'info',
-  onClose
+  onClose,
+  autoCloseDuration = 4500
 }: NotificationModalProps) {
+  useEffect(() => {
+    if (!isOpen) return;
+    const timer = setTimeout(() => {
+      onClose();
+    }, autoCloseDuration);
+    return () => clearTimeout(timer);
+  }, [isOpen, onClose, autoCloseDuration]);
+
   if (!isOpen) return null;
 
   const getIcon = () => {
     switch (type) {
-      case 'success': return <CheckCircle className="w-5 h-5 text-emerald-500" />;
-      case 'error': return <AlertCircle className="w-5 h-5 text-red-500" />;
-      default: return <Info className="w-5 h-5 text-blue-500" />;
+      case 'success': return <CheckCircle className="w-5 h-5 text-emerald-400 shrink-0" />;
+      case 'error': return <AlertCircle className="w-5 h-5 text-red-400 shrink-0" />;
+      default: return <Info className="w-5 h-5 text-blue-400 shrink-0" />;
     }
   };
 
-  const getBg = () => {
+  const getBgBorder = () => {
     switch (type) {
-      case 'success': return 'bg-emerald-500/20';
-      case 'error': return 'bg-red-500/20';
-      default: return 'bg-blue-500/20';
+      case 'success': return 'bg-slate-900/95 border-emerald-500/40 shadow-emerald-950/30';
+      case 'error': return 'bg-slate-900/95 border-red-500/40 shadow-red-950/30';
+      default: return 'bg-slate-900/95 border-blue-500/40 shadow-blue-950/30';
     }
   };
 
-  const getBorder = () => {
+  const getProgressBg = () => {
     switch (type) {
-      case 'success': return 'border-emerald-500/30';
-      case 'error': return 'border-red-500/30';
-      default: return 'border-blue-500/30';
+      case 'success': return 'bg-emerald-400';
+      case 'error': return 'bg-red-400';
+      default: return 'bg-blue-400';
     }
   };
 
   return (
-    <div className="fixed inset-0 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 z-[110]">
-      <div className="bg-[#1a1c2e] border border-white/10 rounded-2xl w-full max-w-md overflow-hidden shadow-2xl animate-in fade-in zoom-in duration-200">
-        <div className={`p-6 border-b border-white/5 flex justify-between items-center ${getBg()}`}>
-          <div className="flex items-center gap-3">
-            <div className={`p-2 rounded-lg bg-white/10`}>
-              {getIcon()}
-            </div>
-            <h3 className="text-xl font-bold text-white">{title}</h3>
+    <>
+      <style>{`
+        @keyframes toastProgress {
+          from { width: 100%; }
+          to { width: 0%; }
+        }
+      `}</style>
+      <div className="fixed top-5 right-5 z-[250] max-w-sm w-[calc(100vw-2.5rem)] pointer-events-auto animate-in slide-in-from-top-5 slide-in-from-right-4 fade-in duration-300">
+        <div className={`relative border backdrop-blur-xl rounded-2xl p-4 shadow-2xl flex items-start gap-3.5 overflow-hidden ${getBgBorder()}`}>
+          <div className="p-2 rounded-xl bg-white/10 shrink-0 mt-0.5">
+            {getIcon()}
           </div>
-          <button 
-            onClick={onClose}
-            className="p-2 hover:bg-white/10 rounded-full text-gray-400 hover:text-white transition-colors"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-        
-        <div className="p-6">
-          <p className="text-gray-300 leading-relaxed">
-            {message}
-          </p>
-        </div>
 
-        <div className="p-4 bg-white/5 border-t border-white/5 flex justify-end">
+          <div className="flex-1 min-w-0 pr-1">
+            <h4 className="text-sm font-extrabold text-white leading-tight">
+              {title}
+            </h4>
+            <p className="text-xs text-gray-300 leading-snug mt-1 break-words">
+              {message}
+            </p>
+          </div>
+
           <button 
             onClick={onClose}
-            className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors text-sm font-medium shadow-lg shadow-blue-900/20"
+            className="p-1 hover:bg-white/10 rounded-lg text-gray-400 hover:text-white transition-colors shrink-0 -mr-1 -mt-1 cursor-pointer"
+            title="Fermer"
           >
-            D'accord
+            <X className="w-4 h-4" />
           </button>
+
+          {/* Animated progress bar at bottom */}
+          <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/10">
+            <div 
+              className={`h-full ${getProgressBg()}`}
+              style={{
+                animation: `toastProgress ${autoCloseDuration}ms linear forwards`
+              }}
+            />
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 }
+
