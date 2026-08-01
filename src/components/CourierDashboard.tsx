@@ -84,12 +84,19 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
 
   useEffect(() => {
     loadData();
+    const handleAuditAdded = () => {
+      loadData();
+    };
+    window.addEventListener('audit_log_added', handleAuditAdded);
+    return () => {
+      window.removeEventListener('audit_log_added', handleAuditAdded);
+    };
   }, [user.id, activeTab]);
   
   const myParcels = allParcels.filter(p => p.createdBy === user.id);
   const parcelsForMe = allParcels.filter(p => 
     p.destinationCity === user.city && 
-    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE'].includes(p.status)
+    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status)
   );
 
   const currentMonth = new Date().toISOString().slice(0, 7);
@@ -131,7 +138,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const myCanceledParcels = myParcels.filter(p => p.status === 'ANNULE');
   const destinedParcels = allParcels.filter(p => 
     p.destinationCity === user.city && 
-    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE'].includes(p.status)
+    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status)
   );
 
   const monthlyRevenue = myParcels
@@ -523,6 +530,14 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                       <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
                         {getDisplayStatus(parcel.status)}
                       </span>
+                      {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                        <button 
+                          onClick={() => handleStatusUpdate(parcel.id, 'EXPEDIE')}
+                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md shadow-indigo-900/30 cursor-pointer"
+                        >
+                          <Send className="w-3.5 h-3.5" /> Expédier
+                        </button>
+                      )}
                       {parcel.isPaid && (
                         <button 
                           onClick={() => printReceipt(parcel)}

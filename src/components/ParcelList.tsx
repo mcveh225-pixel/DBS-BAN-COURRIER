@@ -418,8 +418,8 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                 </td>
                 <td className="py-4">
                   <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
-                    {!parcel.isPaid && parcel.createdBy === currentUser?.id && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CreditCard className="w-3 h-3" /> Payer</button>}
-                    {parcel.isPaid && parcel.status === 'PAYE' && parcel.createdBy === currentUser?.id && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Send className="w-3 h-3" /> Expédier</button>}
+                    {!parcel.isPaid && parcel.createdBy === currentUser?.id && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-blue-700 transition-colors"><CreditCard className="w-3 h-3" /> Payer</button>}
+                    {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.createdBy === currentUser?.id || isAdmin) && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors"><Send className="w-3 h-3" /> Expédier</button>}
                     {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
                     
                     {isAdmin && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (

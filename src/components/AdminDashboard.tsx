@@ -148,6 +148,7 @@ export default function AdminDashboard() {
       if (customEvent.detail) {
         setAuditLogs(prev => [customEvent.detail, ...prev].slice(0, 100));
       }
+      loadData();
     };
     window.addEventListener('audit_log_added', handleAuditAdded);
     return () => {
