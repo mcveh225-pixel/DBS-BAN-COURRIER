@@ -907,14 +907,21 @@ export const getCourierDailyStats = async (courierId: string) => {
     const todayParcels = parcels || [];
 
     let destinedCount = 0;
+    let toDeliverCount = 0;
     if (city) {
-      const { count } = await supabase
+      const { count: dCount } = await supabase
         .from('parcels')
         .select('*', { count: 'exact', head: true })
         .eq('destination_city', city)
-        .gte('created_at', `${today}T00:00:00.000Z`)
-        .in('status', ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE']);
-      destinedCount = count || 0;
+        .in('status', ['EXPEDIE', 'EN_TRANSIT']);
+      destinedCount = dCount || 0;
+
+      const { count: delCount } = await supabase
+        .from('parcels')
+        .select('*', { count: 'exact', head: true })
+        .eq('destination_city', city)
+        .eq('status', 'ARRIVE');
+      toDeliverCount = delCount || 0;
     }
 
     return {
@@ -922,11 +929,12 @@ export const getCourierDailyStats = async (courierId: string) => {
       deliveredParcels: todayParcels.filter(p => p.status === 'LIVRE').length,
       revenue: todayParcels.filter(p => p.is_paid && p.status !== 'ANNULE').reduce((sum, p) => sum + p.price, 0),
       paidParcels: todayParcels.filter(p => p.is_paid && p.status !== 'ANNULE').length,
-      destinedCount
+      destinedCount,
+      toDeliverCount
     };
   } catch (error) {
     console.error('Erreur lors de la récupération des statistiques du responsable:', error);
-    return { totalParcels: 0, deliveredParcels: 0, revenue: 0, paidParcels: 0, destinedCount: 0 };
+    return { totalParcels: 0, deliveredParcels: 0, revenue: 0, paidParcels: 0, destinedCount: 0, toDeliverCount: 0 };
   }
 };
 

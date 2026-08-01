@@ -138,7 +138,11 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const myCanceledParcels = myParcels.filter(p => p.status === 'ANNULE');
   const destinedParcels = allParcels.filter(p => 
     p.destinationCity === user.city && 
-    ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status)
+    (p.status === 'EXPEDIE' || p.status === 'EN_TRANSIT')
+  );
+  const parcelsToDeliver = allParcels.filter(p => 
+    p.destinationCity === user.city && 
+    p.status === 'ARRIVE'
   );
   const myDelayedParcels = allParcels.filter(p => 
     isParcelDelayed(p) && 
@@ -272,11 +276,20 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       const updates: Partial<Parcel> = { status: newStatus };
       const updated = await updateParcel(parcelId, updates);
       if (updated) {
-        setDetailsModal(prev => ({
-          ...prev,
-          parcels: prev.parcels.map(p => p.id === parcelId ? updated : p)
-        }));
         await loadData();
+        setDetailsModal(prev => {
+          if (!prev.isOpen) return prev;
+          let updatedList = prev.parcels.map(p => p.id === parcelId ? updated : p);
+          if (prev.title.includes('Colis Destinés')) {
+            updatedList = updatedList.filter(p => p.status === 'EXPEDIE' || p.status === 'EN_TRANSIT');
+          } else if (prev.title.includes('Colis à Livrer')) {
+            updatedList = updatedList.filter(p => p.status === 'ARRIVE');
+          }
+          return {
+            ...prev,
+            parcels: updatedList
+          };
+        });
         setNotificationModal({
           isOpen: true,
           title: newStatus === 'EXPEDIE' ? 'Colis Expédié' : 'Statut Mis à Jour',
@@ -408,12 +421,19 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     { title: 'Colis Payés', value: stats.paidParcels, icon: CheckCircle, color: 'bg-purple-500' },
     { 
       title: 'Colis Destinés', 
-      value: stats.destinedCount, 
+      value: destinedParcels.length, 
       icon: Package, 
-      color: 'bg-indigo-500',
-      onClick: () => setDetailsModal({ isOpen: true, title: 'Colis Destinés à ' + user.city, parcels: destinedParcels })
+      color: 'bg-indigo-600',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Colis Destinés à ' + user.city + ' (En Transit)', parcels: destinedParcels })
     },
-    { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-orange-500' },
+    { 
+      title: 'Colis à livrer', 
+      value: parcelsToDeliver.length, 
+      icon: Truck, 
+      color: 'bg-orange-600',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Colis à Livrer à ' + user.city + ' (Arrivés)', parcels: parcelsToDeliver })
+    },
+    { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-emerald-600' },
     { 
       title: 'Retards (>48h)', 
       value: myDelayedParcels.length, 
@@ -603,63 +623,111 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             </div>
           </div>
 
-          <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Colis pour {user.city}</h3>
-            <div className="space-y-3">
-              {parcelsForMe.slice(0, 5).map(parcel => (
-                <div 
-                  key={parcel.id} 
-                  className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
-                  onClick={() => setSelectedParcel(parcel)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-white flex items-center gap-2">
-                        {parcel.code}
-                        <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
-                      </p>
-                      <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
-                      <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
-                      <div className="flex items-center gap-1.5 mt-1 text-[9px]">
-                        <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
-                        <span className="text-gray-600">→</span>
-                        <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
-                      <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
-                        {getDisplayStatus(parcel.status)}
-                      </span>
-                      <div className="flex gap-2">
-                        {(parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && (
+          <div className="space-y-6">
+            {/* Section 1: Colis Destinés (En Transit) */}
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Package className="w-5 h-5 text-indigo-400" />
+                  Colis Destinés à {user.city} (En Transit)
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+                  {destinedParcels.length}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {destinedParcels.length > 0 ? (
+                  destinedParcels.slice(0, 5).map(parcel => (
+                    <div 
+                      key={parcel.id} 
+                      className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
+                      onClick={() => setSelectedParcel(parcel)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-white flex items-center gap-2">
+                            {parcel.code}
+                            <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
+                          </p>
+                          <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
+                          <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
+                          <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                            <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
+                            <span className="text-gray-600">→</span>
+                            <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                            {getDisplayStatus(parcel.status)}
+                          </span>
                           <button 
                             onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')}
-                            className="bg-orange-600 hover:bg-orange-700 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1 font-bold transition-all shadow-md cursor-pointer"
+                            className="bg-orange-600 hover:bg-orange-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md cursor-pointer"
                           >
-                            <Truck className="w-3 h-3" /> Arrivé
+                            <Truck className="w-3.5 h-3.5" /> Arrivé
                           </button>
-                        )}
-                        {parcel.status === 'ARRIVE' && (
-                          <button 
-                            onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')}
-                            className="bg-green-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
-                          >
-                            <CheckCircle className="w-3 h-3" /> Livrer
-                          </button>
-                        )}
-                        {parcel.status === 'ANNULE' && (
-                          <button 
-                            onClick={() => handleDeleteParcel(parcel.id, parcel.code)}
-                            className="bg-red-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
-                          >
-                            <Trash2 className="w-3 h-3" /> Supprimer
-                          </button>
-                        )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                </div>
-              ))}
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-400 italic py-4 text-center">Aucun colis en transit vers {user.city}.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Section 2: Colis à Livrer (Arrivés) */}
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <Truck className="w-5 h-5 text-orange-400" />
+                  Colis à Livrer ({user.city})
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-orange-500/20 text-orange-300 border border-orange-500/30">
+                  {parcelsToDeliver.length}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {parcelsToDeliver.length > 0 ? (
+                  parcelsToDeliver.slice(0, 5).map(parcel => (
+                    <div 
+                      key={parcel.id} 
+                      className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
+                      onClick={() => setSelectedParcel(parcel)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-white flex items-center gap-2">
+                            {parcel.code}
+                            <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
+                          </p>
+                          <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
+                          <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
+                          <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                            <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
+                            <span className="text-gray-600">→</span>
+                            <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                            {getDisplayStatus(parcel.status)}
+                          </span>
+                          <button 
+                            onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')}
+                            className="bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md cursor-pointer"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" /> Livrer
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-400 italic py-4 text-center">Aucun colis en attente de livraison à {user.city}.</p>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -931,19 +999,49 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             </div>
             <div className="max-h-[60vh] overflow-y-auto pr-2 custom-scrollbar">
               <div className="grid grid-cols-1 gap-3">
-                {detailsModal.parcels.map(p => (
-                  <div 
-                    key={p.id} 
-                    onClick={() => { setSelectedParcel(p); setDetailsModal(prev => ({ ...prev, isOpen: false })); }} 
-                    className="group bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-blue-600/20 hover:border-blue-500/50 transition-all cursor-pointer flex justify-between items-center"
-                  >
-                    <div>
-                      <p className="font-black text-white group-hover:text-blue-400 transition-colors">{p.code}</p>
-                      <p className="text-xs text-gray-500 group-hover:text-gray-300 transition-colors">{p.recipientName} • {p.destinationCity}</p>
+                {detailsModal.parcels.length > 0 ? (
+                  detailsModal.parcels.map(p => (
+                    <div 
+                      key={p.id} 
+                      onClick={() => { setSelectedParcel(p); setDetailsModal(prev => ({ ...prev, isOpen: false })); }} 
+                      className="group bg-white/5 border border-white/10 rounded-xl p-4 hover:bg-blue-600/20 hover:border-blue-500/50 transition-all cursor-pointer flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3"
+                    >
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <p className="font-black text-white group-hover:text-blue-400 transition-colors">{p.code}</p>
+                          <span className={`px-2 py-0.5 rounded-full text-[10px] text-white ${getStatusColor(p.status)}`}>
+                            {getDisplayStatus(p.status)}
+                          </span>
+                        </div>
+                        <p className="text-xs text-gray-300 mt-1">{p.recipientName} ({p.recipientPhone}) • Dest: {p.destinationCity}</p>
+                        <p className="text-[11px] text-gray-400">{p.quantity} x {p.packageType} • De: {p.originCity}</p>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {(p.status === 'EXPEDIE' || p.status === 'EN_TRANSIT') && p.destinationCity === user.city && (
+                          <button
+                            onClick={() => handleStatusUpdate(p.id, 'ARRIVE')}
+                            className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-md cursor-pointer transition-all"
+                          >
+                            <Truck className="w-3.5 h-3.5" /> Arrivé
+                          </button>
+                        )}
+                        {p.status === 'ARRIVE' && p.destinationCity === user.city && (
+                          <button
+                            onClick={() => handleStatusUpdate(p.id, 'LIVRE')}
+                            className="bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-md cursor-pointer transition-all"
+                          >
+                            <CheckCircle className="w-3.5 h-3.5" /> Livrer
+                          </button>
+                        )}
+                        <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-blue-400 rotate-180 transition-all" />
+                      </div>
                     </div>
-                    <ChevronLeft className="w-5 h-5 text-gray-600 group-hover:text-blue-400 rotate-180 transition-all" />
+                  ))
+                ) : (
+                  <div className="text-center py-8 text-gray-400 italic">
+                    Aucun colis dans cette liste.
                   </div>
-                ))}
+                )}
               </div>
             </div>
             <div className="mt-6 pt-4 border-t border-white/10 flex justify-end">
