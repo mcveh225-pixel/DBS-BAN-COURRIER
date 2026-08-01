@@ -579,7 +579,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                       <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
                         {getDisplayStatus(parcel.status)}
                       </span>
-                      {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
+                      {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.originCity === user.city || parcel.createdBy === user.id) && parcel.destinationCity !== user.city && (
                         <button 
                           onClick={() => handleStatusUpdate(parcel.id, 'EXPEDIE')}
                           className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md shadow-indigo-900/30 cursor-pointer"
@@ -634,7 +634,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                         {(parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && (
                           <button 
                             onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')}
-                            className="bg-orange-600 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1"
+                            className="bg-orange-600 hover:bg-orange-700 text-white px-2 py-1 rounded text-[10px] flex items-center gap-1 font-bold transition-all shadow-md cursor-pointer"
                           >
                             <Truck className="w-3 h-3" /> Arrivé
                           </button>

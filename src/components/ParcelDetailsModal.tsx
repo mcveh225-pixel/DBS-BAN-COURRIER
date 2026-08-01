@@ -274,7 +274,7 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
                     {(parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && (
                       <button 
                         onClick={() => onStatusUpdate(parcel.id, 'ARRIVE')}
-                        className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-sm transition-all shadow-lg shadow-orange-900/40 border border-orange-400/20"
+                        className="w-full flex items-center justify-center gap-3 px-6 py-4 bg-orange-600 hover:bg-orange-700 text-white rounded-xl font-black text-sm transition-all shadow-lg shadow-orange-900/40 border border-orange-400/20 cursor-pointer"
                       >
                         <div className="w-8 h-8 rounded-lg bg-white/20 flex items-center justify-center">
                           <Truck className="w-5 h-5" />

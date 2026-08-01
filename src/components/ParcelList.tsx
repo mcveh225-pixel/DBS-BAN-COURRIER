@@ -71,7 +71,8 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
     if (!isAdmin && currentUser) {
       parcelsToSet = allParcels.filter(p => 
         p.createdBy === currentUser.id || 
-        (p.destinationCity === userCity && ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE'].includes(p.status))
+        p.originCity === userCity ||
+        (p.destinationCity === userCity && ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status))
       );
     }
 
@@ -538,7 +539,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                 <td className="py-4">
                   <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                     {!parcel.isPaid && (parcel.createdBy === currentUser?.id || parcel.originCity === userCity || isAdmin) && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-blue-700 transition-colors"><CreditCard className="w-3 h-3" /> Payer</button>}
-                    {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.createdBy === currentUser?.id || parcel.originCity === userCity || isAdmin) && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors"><Send className="w-3 h-3" /> Expédier</button>}
+                    {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.createdBy === currentUser?.id || parcel.originCity === userCity || isAdmin) && (parcel.destinationCity !== userCity || parcel.originCity === userCity || isAdmin) && <button onClick={() => handleShip(parcel.id)} className="bg-indigo-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-indigo-700 transition-colors"><Send className="w-3 h-3" /> Expédier</button>}
                     {parcel.isPaid && (isAdmin || parcel.createdBy === currentUser?.id || parcel.originCity === userCity) && <button onClick={() => printReceipt(parcel)} className="bg-purple-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Printer className="w-3 h-3" /> Reçu</button>}
                     
                     {isAdmin && (parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (
@@ -567,7 +568,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                         <MessageSquare className="w-3 h-3" /> SMS
                       </button>
                     )}
-                    {isDestinationCourier(parcel) && (parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && <button onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')} className="bg-orange-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><Truck className="w-3 h-3" /> Arrivé</button>}
+                    {isDestinationCourier(parcel) && (parcel.status === 'EN_TRANSIT' || parcel.status === 'EXPEDIE') && <button onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')} className="bg-orange-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-orange-700 transition-colors"><Truck className="w-3 h-3" /> Arrivé</button>}
                     {isDestinationCourier(parcel) && parcel.status === 'ARRIVE' && <button onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')} className="bg-green-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Livrer</button>}
                     
                     {parcel.status === 'ANNULE' && isAdmin && (

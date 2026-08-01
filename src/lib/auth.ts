@@ -669,7 +669,12 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     }
   }
   
-  if (updates.status === 'ARRIVE') dbUpdates.arrived_at = nowStr;
+  if (updates.status === 'ARRIVE') {
+    dbUpdates.arrived_at = nowStr;
+    if (!currentParcel?.shippedAt) {
+      dbUpdates.shipped_at = nowStr;
+    }
+  }
   if (updates.status === 'LIVRE') dbUpdates.delivered_at = nowStr;
   if (updates.status === 'EXPEDIE') dbUpdates.shipped_at = nowStr;
   
@@ -767,7 +772,10 @@ export const updateParcel = async (id: string, updates: Partial<Parcel>): Promis
     mapped.originCity = currentParcel.originCity;
   }
   if (updates.status === 'EXPEDIE' && !mapped.shippedAt) mapped.shippedAt = nowStr;
-  if (updates.status === 'ARRIVE' && !mapped.arrivedAt) mapped.arrivedAt = nowStr;
+  if (updates.status === 'ARRIVE') {
+    if (!mapped.shippedAt) mapped.shippedAt = nowStr;
+    if (!mapped.arrivedAt) mapped.arrivedAt = nowStr;
+  }
   if (updates.status === 'LIVRE' && !mapped.deliveredAt) mapped.deliveredAt = nowStr;
 
   if (currentParcel) {
