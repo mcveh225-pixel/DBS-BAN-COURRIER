@@ -1,6 +1,6 @@
 import React from 'react';
-import { ChevronLeft, Package, Printer, Truck, CheckCircle, Edit, Archive, Trash2, User, Phone, MapPin, Calendar, Info, DollarSign, Settings, Send, Clock } from 'lucide-react';
-import { Parcel, getDisplayStatus, getStatusColor, getCurrentUser } from '../lib/auth';
+import { ChevronLeft, Package, Printer, Truck, CheckCircle, Edit, Archive, Trash2, User, Phone, MapPin, Calendar, Info, DollarSign, Settings, Send, Clock, AlertTriangle } from 'lucide-react';
+import { Parcel, getDisplayStatus, getStatusColor, getCurrentUser, isParcelDelayed, getParcelDelayHours } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 
 interface ParcelDetailsPageProps {
@@ -62,6 +62,31 @@ export default function ParcelDetailsPage({ parcel, onBack, onStatusUpdate, onEd
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Main Content Column */}
         <div className="lg:col-span-2 space-y-6">
+          {/* Alerte Visuelle 48h+ */}
+          {isParcelDelayed(parcel) && (
+            <div className="bg-amber-500/15 border-2 border-amber-500/40 rounded-2xl p-5 flex items-start gap-4 text-amber-200 shadow-xl shadow-amber-950/30 animate-in fade-in duration-300">
+              <div className="p-3 bg-amber-500/20 rounded-xl border border-amber-500/30 text-amber-400 shrink-0">
+                <AlertTriangle className="w-7 h-7 animate-bounce" />
+              </div>
+              <div className="space-y-1">
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-[10px] font-black bg-amber-500 text-slate-950 uppercase tracking-wider">
+                    Alerte Retard (+48h)
+                  </span>
+                  <span className="text-xs text-amber-300/90 font-mono font-bold">
+                    En cours depuis {getParcelDelayHours(parcel)} heures
+                  </span>
+                </div>
+                <h3 className="font-extrabold text-white text-base">
+                  Acheminement en souffrance – Suivi proactif requis
+                </h3>
+                <p className="text-xs text-amber-200/90 leading-relaxed">
+                  Ce colis a dépassé 48 heures d'acheminement en statut &laquo;&nbsp;{getDisplayStatus(parcel.status)}&nbsp;&raquo;. Les responsables doivent contacter la gare de départ (<span className="font-bold text-white">{parcel.originCity}</span>) ou de destination (<span className="font-bold text-white">{parcel.destinationCity}</span>) pour débloquer sa livraison.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* Main Info Card */}
           <div className="bg-slate-900/50 backdrop-blur-md border border-white/10 rounded-2xl p-8 overflow-hidden relative group">
             <div className="absolute top-0 right-0 p-12 opacity-5 scale-150 rotate-12 pointer-events-none group-hover:rotate-6 transition-transform duration-700">

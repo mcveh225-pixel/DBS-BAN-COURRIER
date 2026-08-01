@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2, ChevronLeft, Bell, AlertCircle, History } from 'lucide-react';
-import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel, deleteParcel } from '../lib/auth';
+import { Package, DollarSign, CheckCircle, Clock, Plus, Printer, FileDown, BarChart3, Calendar, Edit, Archive, X, Truck, Send, Trash2, ChevronLeft, Bell, AlertCircle, History, AlertTriangle } from 'lucide-react';
+import { User, getCourierDailyStats, getParcels, getUsers, Parcel, getDisplayStatus, getStatusColor, archiveParcel, updateParcel, deleteParcel, isParcelDelayed, getParcelDelayHours } from '../lib/auth';
 import { printReceipt } from '../lib/receipt';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { sendBothNotifications, sendSMS, createParcelShippedMessage, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, getSMSLogs } from '../lib/notifications';
@@ -139,6 +139,10 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const destinedParcels = allParcels.filter(p => 
     p.destinationCity === user.city && 
     ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status)
+  );
+  const myDelayedParcels = allParcels.filter(p => 
+    isParcelDelayed(p) && 
+    (p.createdBy === user.id || p.destinationCity === user.city)
   );
 
   const monthlyRevenue = myParcels
@@ -396,7 +400,14 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       color: 'bg-indigo-500',
       onClick: () => setDetailsModal({ isOpen: true, title: 'Colis Destinés à ' + user.city, parcels: destinedParcels })
     },
-    { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-orange-500' }
+    { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-orange-500' },
+    { 
+      title: 'Retards (>48h)', 
+      value: myDelayedParcels.length, 
+      icon: AlertTriangle, 
+      color: myDelayedParcels.length > 0 ? 'bg-amber-600 animate-pulse' : 'bg-slate-700',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Colis en Retard (>48h)', parcels: myDelayedParcels })
+    }
   ] : [];
 
   if (selectedParcel) {
@@ -475,6 +486,31 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
           </div>
         </div>
       </div>
+
+      {/* Banner de notification visuelle Suivi Proactif 48h */}
+      {activeTab === 'overview' && myDelayedParcels.length > 0 && (
+        <div className="p-5 bg-amber-500/15 border-2 border-amber-500/40 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-amber-200 shadow-xl shadow-amber-950/20 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-amber-500/20 rounded-xl border border-amber-500/30 text-amber-400 shrink-0">
+              <AlertTriangle className="w-6 h-6 animate-bounce" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-white text-base flex items-center gap-2">
+                Alerte Suivi Proactif – {myDelayedParcels.length} {myDelayedParcels.length > 1 ? 'colis bloqués (>48h)' : 'colis bloqué (>48h)'}
+              </h3>
+              <p className="text-xs text-amber-200/90 mt-0.5">
+                Des colis enregistrés ou destinés à votre gare ({user.city}) sont en cours de traitement depuis plus de 48 heures sans livraison finale.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('parcels')}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl font-black text-xs transition-all shadow-lg shadow-amber-500/20 shrink-0 cursor-pointer"
+          >
+            Voir les colis en retard
+          </button>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 xl:grid-cols-8 gap-4">
         {statCards.map((stat, index) => (

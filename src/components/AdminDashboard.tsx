@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell, CheckCircle, AlertCircle, History, ChevronLeft, Edit, Activity } from 'lucide-react';
+import { Users, Package, DollarSign, TrendingUp, Plus, Eye, Shield, Trash2, FileDown, Bell, CheckCircle, AlertCircle, History, ChevronLeft, Edit, Activity, AlertTriangle } from 'lucide-react';
 import { 
   getUsers, 
   getParcels, 
@@ -17,7 +17,9 @@ import {
   archiveParcel,
   deleteParcel,
   AuditLog,
-  getAuditLogs
+  getAuditLogs,
+  isParcelDelayed,
+  getParcelDelayHours
 } from '../lib/auth';
 import { exportMonthlyReportToExcel, exportTenDayReportToExcel } from '../lib/exportUtils';
 import { 
@@ -400,7 +402,16 @@ export default function AdminDashboard() {
     exportTenDayReportToExcel(filteredParcels, users);
   };
 
+  const delayedParcels = parcels.filter(p => isParcelDelayed(p));
+
   const stats = [
+    { 
+      title: 'Retards (>48h)', 
+      value: delayedParcels.length, 
+      icon: AlertTriangle, 
+      color: delayedParcels.length > 0 ? 'bg-amber-600 animate-pulse' : 'bg-slate-700',
+      onClick: () => setActiveTab('parcels')
+    },
     { 
       title: 'Responsables', 
       value: courierUsers.length, 
@@ -740,7 +751,32 @@ export default function AdminDashboard() {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-7 gap-4">
+      {/* Banner de notification visuelle Suivi Proactif 48h */}
+      {delayedParcels.length > 0 && (
+        <div className="p-5 bg-amber-500/15 border-2 border-amber-500/40 rounded-2xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-amber-200 shadow-xl shadow-amber-950/20 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-3 bg-amber-500/20 rounded-xl border border-amber-500/30 text-amber-400 shrink-0">
+              <AlertTriangle className="w-6 h-6 animate-bounce" />
+            </div>
+            <div>
+              <h3 className="font-extrabold text-white text-base flex items-center gap-2">
+                Alerte Suivi Proactif – {delayedParcels.length} {delayedParcels.length > 1 ? 'colis en retard (>48h)' : 'colis en retard (>48h)'}
+              </h3>
+              <p className="text-xs text-amber-200/90 mt-0.5">
+                Ces colis sont en cours de traitement depuis plus de 48 heures sans livraison. Les responsables des gares concernées doivent être relancés.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setActiveTab('parcels')}
+            className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-slate-950 rounded-xl font-black text-xs transition-all shadow-lg shadow-amber-500/20 shrink-0 cursor-pointer"
+          >
+            Filtrer et gérer les retards
+          </button>
+        </div>
+      )}
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-8 gap-4">
         {stats.map((stat, index) => (
           <div 
             key={index} 

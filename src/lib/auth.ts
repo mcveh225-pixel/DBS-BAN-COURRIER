@@ -82,6 +82,29 @@ export const getStatusColor = (status: Parcel['status']) => {
   }
 };
 
+export const isParcelDelayed = (parcel: Parcel): boolean => {
+  if (parcel.status === 'LIVRE' || parcel.status === 'ANNULE') {
+    return false;
+  }
+  const refDateStr = parcel.shippedAt || parcel.createdAt;
+  if (!refDateStr) return false;
+  const refTime = new Date(refDateStr).getTime();
+  if (isNaN(refTime)) return false;
+  const now = Date.now();
+  const diffHours = (now - refTime) / (1000 * 60 * 60);
+  return diffHours >= 48;
+};
+
+export const getParcelDelayHours = (parcel: Parcel): number => {
+  if (parcel.status === 'LIVRE' || parcel.status === 'ANNULE') return 0;
+  const refDateStr = parcel.shippedAt || parcel.createdAt;
+  if (!refDateStr) return 0;
+  const refTime = new Date(refDateStr).getTime();
+  if (isNaN(refTime)) return 0;
+  const now = Date.now();
+  return Math.max(0, Math.floor((now - refTime) / (1000 * 60 * 60)));
+};
+
 const LOCAL_STORAGE_KEYS = {
   CURRENT_USER: 'dbs_ban_current_user'
 };

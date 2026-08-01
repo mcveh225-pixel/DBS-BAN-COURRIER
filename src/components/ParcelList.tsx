@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X, Trash2, ChevronLeft } from 'lucide-react';
-import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor, deleteParcel } from '../lib/auth';
+import { Search, Filter, CheckCircle, Truck, Package, CreditCard, Printer, Send, Archive, FileDown, TrendingUp, User as UserIcon, Calendar, MessageSquare, Edit, X, Trash2, ChevronLeft, AlertTriangle, Clock } from 'lucide-react';
+import { getParcels, updateParcel, Parcel, getCurrentUser, archiveParcel, getUsers, User, getDisplayStatus, getStatusColor, deleteParcel, isParcelDelayed, getParcelDelayHours } from '../lib/auth';
 import { sendBothNotifications, createParcelArrivedMessage, createParcelDeliveredMessage, logNotification, sendSMS, createManualSMSMessage } from '../lib/notifications';
 import { printReceipt } from '../lib/receipt';
 import { exportParcelListToExcel } from '../lib/exportUtils';
@@ -23,6 +23,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
   const [courierFilter, setCourierFilter] = useState('');
   const [dateFilter, setDateFilter] = useState<boolean>(false);
   const [arrivalDateFilter, setArrivalDateFilter] = useState('');
+  const [delayedFilter, setDelayedFilter] = useState<boolean>(false);
   const [users, setUsers] = useState<User[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
@@ -103,8 +104,11 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
     if (arrivalDateFilter) {
       filtered = filtered.filter(p => p.arrivedAt && p.arrivedAt.split('T')[0] === arrivalDateFilter);
     }
+    if (delayedFilter) {
+      filtered = filtered.filter(p => isParcelDelayed(p));
+    }
     setFilteredParcels(filtered);
-  }, [parcels, searchTerm, statusFilter, courierFilter, dateFilter, arrivalDateFilter]);
+  }, [parcels, searchTerm, statusFilter, courierFilter, dateFilter, arrivalDateFilter, delayedFilter]);
 
   const currentUser = getCurrentUser();
 
@@ -224,6 +228,7 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
   const todayParcelsCount = parcels.filter(p => 
     new Date(p.createdAt).toLocaleDateString() === today
   ).length;
+  const delayedParcelsCount = parcels.filter(p => isParcelDelayed(p)).length;
 
   if (editingParcel) {
     return (
@@ -291,13 +296,25 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
             <Package className="w-6 h-6 text-blue-400" />
             Gestion des Colis
           </h2>
-          <div className="flex gap-3 mt-1">
+          <div className="flex flex-wrap gap-2.5 mt-1">
             <span className="px-3 py-1 bg-blue-600/20 border border-blue-600/30 rounded-full text-xs font-medium text-blue-400 flex items-center gap-1">
               <TrendingUp className="w-3 h-3" /> Aujourd'hui: {todayParcelsCount}
             </span>
             <span className="px-3 py-1 bg-white/5 border border-white/10 rounded-full text-xs font-medium text-gray-400">
               Total: {parcels.length}
             </span>
+            {delayedParcelsCount > 0 && (
+              <button
+                onClick={() => setDelayedFilter(!delayedFilter)}
+                className={`px-3 py-1 rounded-full text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  delayedFilter
+                    ? 'bg-amber-500 text-slate-950 font-black shadow-md shadow-amber-500/20'
+                    : 'bg-amber-500/20 border border-amber-500/40 text-amber-300 hover:bg-amber-500/30 animate-pulse'
+                }`}
+              >
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-400" /> Retards &gt;48h ({delayedParcelsCount})
+              </button>
+            )}
           </div>
         </div>
         {isAdmin && (
@@ -310,6 +327,36 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
           </button>
         )}
       </div>
+
+      {/* Banner Notification Suivi Proactif 48h */}
+      {delayedParcelsCount > 0 && (
+        <div className="mb-6 p-4 bg-amber-500/15 border-2 border-amber-500/40 rounded-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4 text-amber-200 shadow-lg shadow-amber-950/20 animate-in fade-in">
+          <div className="flex items-center gap-3">
+            <div className="p-2 bg-amber-500/20 rounded-lg text-amber-400 shrink-0">
+              <AlertTriangle className="w-6 h-6 animate-pulse" />
+            </div>
+            <div>
+              <p className="font-extrabold text-white text-sm flex items-center gap-2">
+                Alerte Suivi Proactif ({delayedParcelsCount} {delayedParcelsCount > 1 ? 'colis en retard' : 'colis en retard'})
+              </p>
+              <p className="text-xs text-amber-200/90 mt-0.5">
+                {delayedParcelsCount > 1 ? 'Ces colis sont' : 'Ce colis est'} en cours de traitement depuis plus de 48 heures sans livraison finale.
+              </p>
+            </div>
+          </div>
+          <button
+            onClick={() => setDelayedFilter(!delayedFilter)}
+            className={`px-3.5 py-2 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 shrink-0 cursor-pointer ${
+              delayedFilter 
+                ? 'bg-amber-500 text-slate-950 shadow-md font-black' 
+                : 'bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40'
+            }`}
+          >
+            <AlertTriangle className="w-3.5 h-3.5 text-amber-400" />
+            {delayedFilter ? 'Voir tous les colis' : `Filtrer les ${delayedParcelsCount} retards (>48h)`}
+          </button>
+        </div>
+      )}
 
       <div className="flex flex-col md:flex-row gap-4 mb-6">
         <div className="flex-1 relative">
@@ -381,41 +428,58 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
             </tr>
           </thead>
           <tbody>
-            {filteredParcels.map(parcel => (
-              <tr 
-                key={parcel.id} 
-                className="border-b border-white/5 hover:bg-white/10 transition-colors cursor-pointer group"
-                onClick={() => onParcelClick ? onParcelClick(parcel) : setSelectedParcel(parcel)}
-              >
-                <td className="py-4 text-white">
-                  <div className="flex flex-col">
-                    <span className="font-bold">{parcel.code}</span>
-                    <span className="text-[10px] text-gray-500 opacity-50 group-hover:opacity-100 transition-opacity">Cliquer pour détails</span>
-                  </div>
-                </td>
-                <td className="py-4">
-                  <p className="text-white">{parcel.recipientName}</p>
-                  <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
-                  <div className="flex items-center gap-1.5 mt-1">
-                    <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">{parcel.originCity}</span>
-                    <span className="text-gray-600 text-xs text-[10px]">→</span>
-                    <span className="text-[10px] bg-orange-500/10 text-orange-400 px-1.5 py-0.5 rounded border border-orange-500/20">{parcel.destinationCity}</span>
-                  </div>
-                </td>
-                {isAdmin && (
-                  <td className="py-4 text-gray-300 text-sm">
-                    {users.find(u => u.id === parcel.createdBy)?.name || 'Inconnu'}
+            {filteredParcels.map(parcel => {
+              const isDelayed = isParcelDelayed(parcel);
+              return (
+                <tr 
+                  key={parcel.id} 
+                  className={`border-b border-white/5 hover:bg-white/10 transition-colors cursor-pointer group ${
+                    isDelayed ? 'bg-amber-500/10 hover:bg-amber-500/20 border-l-4 border-l-amber-500' : ''
+                  }`}
+                  onClick={() => onParcelClick ? onParcelClick(parcel) : setSelectedParcel(parcel)}
+                >
+                  <td className="py-4 text-white">
+                    <div className="flex flex-col">
+                      <span className="font-bold flex items-center gap-1.5">
+                        {parcel.code}
+                        {isDelayed && (
+                          <AlertTriangle className="w-3.5 h-3.5 text-amber-400 shrink-0 animate-pulse" title={`Retard +${getParcelDelayHours(parcel)}h`} />
+                        )}
+                      </span>
+                      <span className="text-[10px] text-gray-500 opacity-50 group-hover:opacity-100 transition-opacity">Cliquer pour détails</span>
+                    </div>
                   </td>
-                )}
-                <td className="py-4">
-                  <p className="text-green-400">{parcel.price.toLocaleString()} FCFA</p>
-                  <p className="text-xs">{parcel.isPaid ? '✓ Payé' : 'Non payé'}</p>
-                </td>
-                <td className="py-4">
-                  <span className={`px-3 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
-                    {getDisplayStatus(parcel.status)}
-                  </span>
-                </td>
+                  <td className="py-4">
+                    <p className="text-white">{parcel.recipientName}</p>
+                    <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
+                    <div className="flex items-center gap-1.5 mt-1">
+                      <span className="text-[10px] bg-blue-500/10 text-blue-400 px-1.5 py-0.5 rounded border border-blue-500/20">{parcel.originCity}</span>
+                      <span className="text-gray-600 text-xs text-[10px]">→</span>
+                      <span className="text-[10px] bg-orange-500/10 text-orange-400 px-1.5 py-0.5 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                    </div>
+                  </td>
+                  {isAdmin && (
+                    <td className="py-4 text-gray-300 text-sm">
+                      {users.find(u => u.id === parcel.createdBy)?.name || 'Inconnu'}
+                    </td>
+                  )}
+                  <td className="py-4">
+                    <p className="text-green-400">{parcel.price.toLocaleString()} FCFA</p>
+                    <p className="text-xs">{parcel.isPaid ? '✓ Payé' : 'Non payé'}</p>
+                  </td>
+                  <td className="py-4">
+                    <div className="flex flex-col items-start gap-1">
+                      <span className={`px-3 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                        {getDisplayStatus(parcel.status)}
+                      </span>
+                      {isDelayed && (
+                        <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1 animate-pulse" title={`En cours depuis ${getParcelDelayHours(parcel)}h`}>
+                          <Clock className="w-3 h-3 text-amber-400" />
+                          +48h ({getParcelDelayHours(parcel)}h)
+                        </span>
+                      )}
+                    </div>
+                  </td>
                 <td className="py-4">
                   <div className="flex flex-wrap gap-2" onClick={(e) => e.stopPropagation()}>
                     {!parcel.isPaid && parcel.createdBy === currentUser?.id && <button onClick={() => handlePayment(parcel.id)} className="bg-blue-600 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1 cursor-pointer hover:bg-blue-700 transition-colors"><CreditCard className="w-3 h-3" /> Payer</button>}
@@ -462,7 +526,8 @@ export default function ParcelList({ isAdmin, userCity, onParcelClick }: ParcelL
                   </div>
                 </td>
               </tr>
-            ))}
+            );
+          })}
           </tbody>
         </table>
       </div>
