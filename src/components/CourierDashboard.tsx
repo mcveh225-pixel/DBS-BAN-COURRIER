@@ -37,6 +37,26 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     parcels: []
   });
 
+  const [actionConfirmModal, setActionConfirmModal] = useState<{
+    isOpen: boolean;
+    parcelId: string;
+    parcelCode: string;
+    newStatus: Parcel['status'];
+    title: string;
+    message: string;
+    confirmLabel: string;
+    isDanger: boolean;
+  }>({
+    isOpen: false,
+    parcelId: '',
+    parcelCode: '',
+    newStatus: 'ENREGISTRE',
+    title: '',
+    message: '',
+    confirmLabel: 'Confirmer',
+    isDanger: false
+  });
+
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
     parcelId: string;
@@ -94,6 +114,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   }, [user.id, activeTab]);
   
   const myParcels = allParcels.filter(p => p.createdBy === user.id);
+  const myActiveParcels = myParcels.filter(p => p.status !== 'ARRIVE' && p.status !== 'LIVRE' && p.status !== 'ANNULE');
   const parcelsForMe = allParcels.filter(p => 
     p.destinationCity === user.city && 
     ['EXPEDIE', 'EN_TRANSIT', 'ARRIVE', 'LIVRE'].includes(p.status)
@@ -143,6 +164,10 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
   const parcelsToDeliver = allParcels.filter(p => 
     p.destinationCity === user.city && 
     p.status === 'ARRIVE'
+  );
+  const allDeliveredParcels = allParcels.filter(p => 
+    (p.destinationCity === user.city || p.createdBy === user.id) && 
+    p.status === 'LIVRE'
   );
   const myDelayedParcels = allParcels.filter(p => 
     isParcelDelayed(p) && 
@@ -270,6 +295,56 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     setEditingParcel(null);
   };
 
+  const confirmStatusChange = (parcelId: string, newStatus: Parcel['status'], customCode?: string) => {
+    const parcel = allParcels.find(p => p.id === parcelId);
+    const code = customCode || parcel?.code || 'Colis';
+
+    let title = '';
+    let message = '';
+    let confirmLabel = '';
+    let isDanger = false;
+
+    if (newStatus === 'EXPEDIE') {
+      title = 'Confirmer l\'expédition';
+      message = `Êtes-vous sûr de vouloir EXPÉDIER le colis ${code} ? Son statut passera à "EXPÉDIÉ".`;
+      confirmLabel = 'Oui, Expédier le colis';
+    } else if (newStatus === 'ARRIVE') {
+      title = 'Confirmer l\'arrivée en gare';
+      message = `Êtes-vous sûr de vouloir marquer le colis ${code} comme ARRIVÉ à la gare de destination (${user.city}) ? Un SMS de notification sera envoyé au destinataire.`;
+      confirmLabel = 'Oui, Marquer comme Arrivé';
+    } else if (newStatus === 'LIVRE') {
+      title = 'Confirmer la livraison';
+      message = `Êtes-vous sûr de vouloir marquer le colis ${code} comme LIVRÉ au destinataire ? Cette action valide la remise finale du colis.`;
+      confirmLabel = 'Oui, Marquer comme Livré';
+    } else if (newStatus === 'ANNULE') {
+      title = 'Confirmer l\'annulation';
+      message = `Êtes-vous sûr de vouloir ANNULER le colis ${code} ?`;
+      confirmLabel = 'Oui, Annuler le colis';
+      isDanger = true;
+    } else {
+      title = 'Confirmer l\'action';
+      message = `Voulez-vous vraiment modifier le statut du colis ${code} vers "${getDisplayStatus(newStatus)}" ?`;
+      confirmLabel = 'Confirmer';
+    }
+
+    setActionConfirmModal({
+      isOpen: true,
+      parcelId,
+      parcelCode: code,
+      newStatus,
+      title,
+      message,
+      confirmLabel,
+      isDanger
+    });
+  };
+
+  const executeConfirmedStatusChange = async () => {
+    const { parcelId, newStatus } = actionConfirmModal;
+    setActionConfirmModal(prev => ({ ...prev, isOpen: false }));
+    await handleStatusUpdate(parcelId, newStatus);
+  };
+
   const handleStatusUpdate = async (parcelId: string, newStatus: Parcel['status']) => {
     try {
       const parcel = allParcels.find(p => p.id === parcelId);
@@ -284,6 +359,10 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
             updatedList = updatedList.filter(p => p.status === 'EXPEDIE' || p.status === 'EN_TRANSIT');
           } else if (prev.title.includes('Colis à Livrer')) {
             updatedList = updatedList.filter(p => p.status === 'ARRIVE');
+          } else if (prev.title.includes('Tous mes colis')) {
+            updatedList = updatedList.filter(p => p.status !== 'ARRIVE' && p.status !== 'LIVRE' && p.status !== 'ANNULE');
+          } else if (prev.title.includes('Livrés') || prev.title.includes('livrés')) {
+            updatedList = updatedList.filter(p => p.status === 'LIVRE');
           }
           return {
             ...prev,
@@ -391,10 +470,10 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
     },
     { 
       title: 'Tous mes colis', 
-      value: myParcels.length, 
+      value: myActiveParcels.length, 
       icon: Package, 
       color: 'bg-slate-600',
-      onClick: () => setDetailsModal({ isOpen: true, title: 'Tous mes colis créés', parcels: myParcels })
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Tous mes colis créés (En cours)', parcels: myActiveParcels })
     },
     { 
       title: 'Mes colis expédiés', 
@@ -433,7 +512,13 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       color: 'bg-orange-600',
       onClick: () => setDetailsModal({ isOpen: true, title: 'Colis à Livrer à ' + user.city + ' (Arrivés)', parcels: parcelsToDeliver })
     },
-    { title: 'Livrés Aujourd\'hui', value: stats.deliveredParcels, icon: Clock, color: 'bg-emerald-600' },
+    { 
+      title: 'Colis Livrés', 
+      value: allDeliveredParcels.length, 
+      icon: CheckCircle, 
+      color: 'bg-emerald-600',
+      onClick: () => setDetailsModal({ isOpen: true, title: 'Tous les Colis Livrés à ' + user.city, parcels: allDeliveredParcels })
+    },
     { 
       title: 'Retards (>48h)', 
       value: myDelayedParcels.length, 
@@ -573,53 +658,64 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
       {activeTab === 'overview' && (
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
-            <h3 className="text-lg font-semibold text-white mb-4">Mes Colis Récents</h3>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <Package className="w-5 h-5 text-blue-400" />
+                Tous Mes Colis Créés
+              </h3>
+              <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                {myActiveParcels.length}
+              </span>
+            </div>
             <div className="space-y-3">
-              {myParcels.slice(0, 5).map(parcel => (
-                <div 
-                  key={parcel.id} 
-                  className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
-                  onClick={() => setSelectedParcel(parcel)}
-                >
-                  <div className="flex justify-between items-start">
-                    <div>
-                      <p className="font-medium text-white flex items-center gap-2">
-                        {parcel.code}
-                        <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
-                      </p>
-                      <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
-                      <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
-                      <div className="flex items-center gap-1.5 mt-1 text-[9px]">
-                        <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
-                        <span className="text-gray-600">→</span>
-                        <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+              {myActiveParcels.length > 0 ? (
+                myActiveParcels.slice(0, 5).map(parcel => (
+                  <div 
+                    key={parcel.id} 
+                    className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
+                    onClick={() => setSelectedParcel(parcel)}
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <p className="font-medium text-white flex items-center gap-2">
+                          {parcel.code}
+                          <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
+                        </p>
+                        <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
+                        <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
+                        <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                          <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
+                          <span className="text-gray-600">→</span>
+                          <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                        </div>
+                      </div>
+                      <div className="text-right flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
+                        <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                          {getDisplayStatus(parcel.status)}
+                        </span>
+                        {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.originCity === user.city || parcel.createdBy === user.id) && (
+                          <button 
+                            onClick={() => confirmStatusChange(parcel.id, 'EXPEDIE', parcel.code)}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md shadow-indigo-900/30 cursor-pointer"
+                          >
+                            <Send className="w-3.5 h-3.5" /> Expédier
+                          </button>
+                        )}
+                        {parcel.isPaid && (
+                          <button 
+                            onClick={() => printReceipt(parcel)}
+                            className="text-purple-400 hover:text-purple-300 flex items-center gap-1 text-xs"
+                          >
+                            <Printer className="w-3 h-3" /> Reçu
+                          </button>
+                        )}
                       </div>
                     </div>
-                    <div className="text-right flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
-                      <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
-                        {getDisplayStatus(parcel.status)}
-                      </span>
-                      {(parcel.status === 'ENREGISTRE' || parcel.status === 'PAYE') && (parcel.originCity === user.city || parcel.createdBy === user.id) && parcel.destinationCity !== user.city && (
-                        <button 
-                          onClick={() => handleStatusUpdate(parcel.id, 'EXPEDIE')}
-                          className="bg-indigo-600 hover:bg-indigo-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md shadow-indigo-900/30 cursor-pointer"
-                        >
-                          <Send className="w-3.5 h-3.5" /> Expédier
-                        </button>
-                      )}
-                      {parcel.isPaid && (
-                        <button 
-                          onClick={() => printReceipt(parcel)}
-                          className="text-purple-400 hover:text-purple-300 flex items-center gap-1 text-xs"
-                        >
-                          <Printer className="w-3 h-3" /> Reçu
-                        </button>
-                      )}
-                      {/* Only show receipt download if paid. Editing, cancelling, and deleting are admin-only. */}
-                    </div>
                   </div>
-                </div>
-              ))}
+                ))
+              ) : (
+                <p className="text-xs text-gray-400 italic py-4 text-center">Aucun colis créé.</p>
+              )}
             </div>
           </div>
 
@@ -662,7 +758,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                             {getDisplayStatus(parcel.status)}
                           </span>
                           <button 
-                            onClick={() => handleStatusUpdate(parcel.id, 'ARRIVE')}
+                            onClick={() => confirmStatusChange(parcel.id, 'ARRIVE', parcel.code)}
                             className="bg-orange-600 hover:bg-orange-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md cursor-pointer"
                           >
                             <Truck className="w-3.5 h-3.5" /> Arrivé
@@ -715,7 +811,7 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                             {getDisplayStatus(parcel.status)}
                           </span>
                           <button 
-                            onClick={() => handleStatusUpdate(parcel.id, 'LIVRE')}
+                            onClick={() => confirmStatusChange(parcel.id, 'LIVRE', parcel.code)}
                             className="bg-green-600 hover:bg-green-700 text-white px-2.5 py-1 rounded-lg text-xs flex items-center gap-1 font-bold transition-all shadow-md cursor-pointer"
                           >
                             <CheckCircle className="w-3.5 h-3.5" /> Livrer
@@ -726,6 +822,61 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                   ))
                 ) : (
                   <p className="text-xs text-gray-400 italic py-4 text-center">Aucun colis en attente de livraison à {user.city}.</p>
+                )}
+              </div>
+            </div>
+
+            {/* Section 3: Colis Livrés */}
+            <div className="bg-white/10 backdrop-blur-sm border border-white/20 rounded-xl p-6">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                  <CheckCircle className="w-5 h-5 text-emerald-400" />
+                  Colis Livrés ({user.city})
+                </h3>
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  {allDeliveredParcels.length}
+                </span>
+              </div>
+              <div className="space-y-3">
+                {allDeliveredParcels.length > 0 ? (
+                  allDeliveredParcels.slice(0, 5).map(parcel => (
+                    <div 
+                      key={parcel.id} 
+                      className="bg-white/5 rounded-lg p-4 hover:bg-white/10 transition-colors cursor-pointer group"
+                      onClick={() => setSelectedParcel(parcel)}
+                    >
+                      <div className="flex justify-between items-start">
+                        <div>
+                          <p className="font-medium text-white flex items-center gap-2">
+                            {parcel.code}
+                            <span className="text-[10px] text-gray-500 opacity-0 group-hover:opacity-100 transition-opacity">Voir détails</span>
+                          </p>
+                          <p className="text-xs text-gray-400">{parcel.quantity} x {parcel.packageType}</p>
+                          <p className="text-sm text-white font-medium">{parcel.recipientName}</p>
+                          <div className="flex items-center gap-1.5 mt-1 text-[9px]">
+                            <span className="text-blue-400 font-bold px-1.5 bg-blue-500/10 rounded border border-blue-500/20">{parcel.originCity}</span>
+                            <span className="text-gray-600">→</span>
+                            <span className="text-orange-400 font-bold px-1.5 bg-orange-500/10 rounded border border-orange-500/20">{parcel.destinationCity}</span>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-2" onClick={(e) => e.stopPropagation()}>
+                          <span className={`px-2 py-1 rounded-full text-xs text-white ${getStatusColor(parcel.status)}`}>
+                            {getDisplayStatus(parcel.status)}
+                          </span>
+                          {parcel.isPaid && (
+                            <button 
+                              onClick={() => printReceipt(parcel)}
+                              className="text-purple-400 hover:text-purple-300 flex items-center gap-1 text-xs"
+                            >
+                              <Printer className="w-3 h-3" /> Reçu
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                ) : (
+                  <p className="text-xs text-gray-400 italic py-4 text-center">Aucun colis livré à {user.city}.</p>
                 )}
               </div>
             </div>
@@ -1017,6 +1168,14 @@ export default function CourierDashboard({ user }: CourierDashboardProps) {
                         <p className="text-[11px] text-gray-400">{p.quantity} x {p.packageType} • De: {p.originCity}</p>
                       </div>
                       <div className="flex items-center gap-2 shrink-0" onClick={(e) => e.stopPropagation()}>
+                        {(p.status === 'ENREGISTRE' || p.status === 'PAYE') && (p.createdBy === user.id || p.originCity === user.city) && (
+                          <button
+                            onClick={() => handleStatusUpdate(p.id, 'EXPEDIE')}
+                            className="bg-indigo-600 hover:bg-indigo-700 text-white px-3 py-1.5 rounded-lg text-xs font-bold flex items-center gap-1 shadow-md cursor-pointer transition-all"
+                          >
+                            <Send className="w-3.5 h-3.5" /> Expédier
+                          </button>
+                        )}
                         {(p.status === 'EXPEDIE' || p.status === 'EN_TRANSIT') && p.destinationCity === user.city && (
                           <button
                             onClick={() => handleStatusUpdate(p.id, 'ARRIVE')}
