@@ -5,9 +5,11 @@ import { login, User, initializeAdmin } from '../lib/auth';
 
 interface AuthPageProps {
   onLogin: (user: User) => void;
+  sessionNotice?: string | null;
+  onClearNotice?: () => void;
 }
 
-export default function AuthPage({ onLogin }: AuthPageProps) {
+export default function AuthPage({ onLogin, sessionNotice, onClearNotice }: AuthPageProps) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -21,6 +23,7 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    if (onClearNotice) onClearNotice();
     setLoading(true);
 
     try {
@@ -55,6 +58,16 @@ export default function AuthPage({ onLogin }: AuthPageProps) {
             <h1 className="text-3xl font-bold text-white mb-2">DBS-BAN</h1>
             <p className="text-gray-300">Service Courrier - Connexion</p>
           </div>
+
+          {sessionNotice && (
+            <div className="mb-6 p-4 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-200 text-xs flex items-start gap-3 shadow-lg shadow-amber-950/30 animate-in fade-in">
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+              <div className="space-y-1">
+                <span className="font-bold text-amber-300 block">Session fermée</span>
+                <p className="leading-relaxed">{sessionNotice}</p>
+              </div>
+            </div>
+          )}
 
           <form onSubmit={handleSubmit} className="space-y-6">
             <div>

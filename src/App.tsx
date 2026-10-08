@@ -1,17 +1,49 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Package, LogOut, Settings, WifiOff, RefreshCw } from 'lucide-react';
 import Logo from './components/Logo';
 import AuthPage from './components/AuthPage';
 import AdminDashboard from './components/AdminDashboard';
 import CourierDashboard from './components/CourierDashboard';
 import ChangePasswordModal from './components/ChangePasswordModal';
-import { User, getCurrentUser, logout, cleanupOldDeliveredParcels, getUnsyncedCount, triggerBackgroundSync } from './lib/auth';
+import { 
+  User, 
+  getCurrentUser, 
+  logout, 
+  cleanupOldDeliveredParcels, 
+  getUnsyncedCount, 
+  triggerBackgroundSync,
+  verifyUserSession 
+} from './lib/auth';
+import { supabase } from './lib/supabase';
 
 function App() {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
   const [showPasswordModal, setShowPasswordModal] = useState(false);
   const [unsyncedCount, setUnsyncedCount] = useState(0);
+  const [sessionNotice, setSessionNotice] = useState<string | null>(() => {
+    try {
+      const stored = sessionStorage.getItem('dbs_ban_session_notice');
+      if (stored) {
+        sessionStorage.removeItem('dbs_ban_session_notice');
+        return stored;
+      }
+    } catch {
+      // Ignore
+    }
+    return null;
+  });
+
+  const forceLogoutWithNotice = useCallback((message: string) => {
+    try {
+      sessionStorage.setItem('dbs_ban_session_notice', message);
+    } catch {
+      // Ignore
+    }
+    setSessionNotice(message);
+    logout();
+    setUser(null);
+  }, []);
 
   useEffect(() => {
     const currentUser = getCurrentUser();
@@ -44,13 +76,100 @@ function App() {
     };
   }, []);
 
+  // Surveillance de la session active de l'utilisateur (déconnexion en temps réel si mot de passe changé ou compte modifié)
+  useEffect(() => {
+    if (!user) return;
+
+    // 1. Canal Supabase Realtime pour déconnexion instantanée
+    const channel = supabase
+      .channel(`user-session-monitor-${user.id}`)
+      .on(
+        'postgres_changes',
+        {
+          event: 'UPDATE',
+          schema: 'public',
+          table: 'users',
+          filter: `id=eq.${user.id}`
+        },
+        (payload) => {
+          const updated = payload.new as any;
+          if (!updated) return;
+          if (updated.is_archived) {
+            forceLogoutWithNotice("Votre compte a été archivé ou désactivé par l'administrateur.");
+          } else if (updated.password && user.password && updated.password !== user.password) {
+            forceLogoutWithNotice("Votre mot de passe a été modifié par l'administrateur principal. Vous avez été déconnecté automatiquement. Veuillez vous reconnecter avec le nouveau mot de passe.");
+          } else if (updated.name !== user.name || updated.city !== user.city) {
+            setUser(prev => prev ? ({ ...prev, name: updated.name, city: updated.city }) : null);
+            const saved = getCurrentUser();
+            if (saved) {
+              localStorage.setItem('dbs_ban_current_user', JSON.stringify({ ...saved, name: updated.name, city: updated.city }));
+            }
+          }
+        }
+      )
+      .subscribe();
+
+    // 2. BroadcastChannel pour révoquer les sessions entre onglets/fenêtres instantanément
+    let bc: BroadcastChannel | null = null;
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      bc = new BroadcastChannel('dbs_ban_auth_channel');
+      bc.onmessage = (event) => {
+        if (event.data?.type === 'FORCE_LOGOUT' && event.data.userId === user.id) {
+          forceLogoutWithNotice("Votre mot de passe a été modifié par l'administrateur principal. Vous avez été déconnecté automatiquement. Veuillez vous reconnecter avec le nouveau mot de passe.");
+        }
+      };
+    }
+
+    // 3. Battement de coeur périodique (toutes les 3 secondes) pour garantir la déconnexion
+    const heartbeatInterval = setInterval(async () => {
+      const res = await verifyUserSession(user.id, user.password);
+      if (!res.valid) {
+        if (res.reason === 'PASSWORD_CHANGED') {
+          forceLogoutWithNotice("Votre mot de passe a été modifié par l'administrateur principal. Vous avez été déconnecté automatiquement. Veuillez vous reconnecter avec le nouveau mot de passe.");
+        } else if (res.reason === 'ARCHIVED') {
+          forceLogoutWithNotice("Votre compte a été archivé ou désactivé par l'administrateur.");
+        } else if (res.reason === 'NOT_FOUND') {
+          forceLogoutWithNotice("Votre compte n'existe plus ou a été supprimé.");
+        }
+      } else if (res.freshUser) {
+        if (res.freshUser.name !== user.name || res.freshUser.city !== user.city) {
+          setUser(res.freshUser);
+          localStorage.setItem('dbs_ban_current_user', JSON.stringify(res.freshUser));
+        }
+      }
+    }, 3000);
+
+    // 4. Vérification dès la reprise du focus de l'onglet
+    const handleFocus = async () => {
+      const res = await verifyUserSession(user.id, user.password);
+      if (!res.valid && res.reason === 'PASSWORD_CHANGED') {
+        forceLogoutWithNotice("Votre mot de passe a été modifié par l'administrateur principal. Vous avez été déconnecté.");
+      }
+    };
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      supabase.removeChannel(channel);
+      if (bc) bc.close();
+      clearInterval(heartbeatInterval);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [user?.id, user?.password, user?.name, user?.city, forceLogoutWithNotice]);
+
   if (loading) return (
     <div className="min-h-screen bg-slate-900 flex items-center justify-center text-white">Chargement...</div>
   );
 
   if (!user) return (
     <>
-      <AuthPage onLogin={setUser} />
+      <AuthPage 
+        onLogin={(loggedInUser) => {
+          setSessionNotice(null);
+          setUser(loggedInUser);
+        }} 
+        sessionNotice={sessionNotice}
+        onClearNotice={() => setSessionNotice(null)}
+      />
     </>
   );
 
@@ -105,7 +224,15 @@ function App() {
         © 2025 DBS-BAN Transport – Service Courrier.
       </footer>
 
-      {showPasswordModal && <ChangePasswordModal userId={user.id} onClose={() => setShowPasswordModal(false)} />}
+      {showPasswordModal && (
+        <ChangePasswordModal 
+          userId={user.id} 
+          onClose={() => setShowPasswordModal(false)}
+          onPasswordChanged={(newPassword) => {
+            setUser(prev => prev ? ({ ...prev, password: newPassword }) : null);
+          }}
+        />
+      )}
     </div>
   );
 }

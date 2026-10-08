@@ -7,12 +7,14 @@ import {
   createAdminUser, 
   deleteUser, 
   archiveUser, 
+  updateCourierUser,
   getDailyRevenues, 
   getCourierDailyStats, 
   getCurrentUser, 
   getDisplayStatus, 
   getStatusColor, 
   Parcel,
+  User,
   updateParcel,
   archiveParcel,
   deleteParcel,
@@ -33,6 +35,7 @@ import {
 } from '../lib/notifications';
 import CreateCourierModal from './CreateCourierModal';
 import CreateAdminModal from './CreateAdminModal';
+import EditCourierModal from './EditCourierModal';
 import ParcelList from './ParcelList';
 import RevenueChart from './RevenueChart';
 import AdminBreakdownModal from './AdminBreakdownModal';
@@ -49,6 +52,7 @@ export default function AdminDashboard() {
   const [showCreateAdminModal, setShowCreateAdminModal] = useState(false);
   const [selectedParcel, setSelectedParcel] = useState<Parcel | null>(null);
   const [editingParcel, setEditingParcel] = useState<Parcel | null>(null);
+  const [editingUser, setEditingUser] = useState<User | null>(null);
   const [activeTab, setActiveTab] = useState<'overview' | 'couriers' | 'parcels' | 'revenue' | 'notifications' | 'history' | 'audit'>('overview');
   const [historyParcelId, setHistoryParcelId] = useState<string | undefined>(undefined);
   const [dailyRevenues, setDailyRevenues] = useState<any[]>([]);
@@ -935,14 +939,21 @@ export default function AdminDashboard() {
                       </span>
                     </td>
                     <td className="py-3">
-                      <div className="flex gap-2">
+                      <div className="flex items-center gap-2">
+                        <button 
+                          onClick={() => setEditingUser(user)} 
+                          className="bg-blue-600 hover:bg-blue-700 text-white px-2.5 py-1 rounded-md text-xs flex items-center gap-1 font-medium transition-colors shadow-sm cursor-pointer"
+                          title="Modifier le nom et le mot de passe"
+                        >
+                          <Edit className="w-3 h-3" /> Modifier
+                        </button>
                         {user.id !== 'admin-1' && user.email !== 'mcveh225@gmail.com' && user.id !== currentUser?.id && !user.isArchived && (
-                          <button onClick={() => handleArchiveUser(user.id, user.name)} className="bg-orange-600 hover:bg-orange-700 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1">
+                          <button onClick={() => handleArchiveUser(user.id, user.name)} className="bg-orange-600 hover:bg-orange-700 text-white px-2.5 py-1 rounded-md text-xs flex items-center gap-1 transition-colors cursor-pointer">
                             <Eye className="w-3 h-3" /> Archiver
                           </button>
                         )}
                         {user.id !== 'admin-1' && user.email !== 'mcveh225@gmail.com' && user.id !== currentUser?.id && (
-                          <button onClick={() => handleDeleteUser(user.id, user.name, user.role)} className="bg-red-600 hover:bg-red-700 text-white px-3 py-1 rounded-md text-xs flex items-center gap-1">
+                          <button onClick={() => handleDeleteUser(user.id, user.name, user.role)} className="bg-red-600 hover:bg-red-700 text-white px-2.5 py-1 rounded-md text-xs flex items-center gap-1 transition-colors cursor-pointer">
                             <Trash2 className="w-3 h-3" /> Supprimer
                           </button>
                         )}
@@ -1413,6 +1424,31 @@ export default function AdminDashboard() {
 
       {showCreateModal && <CreateCourierModal onClose={() => setShowCreateModal(false)} onCreate={handleCreateCourier} />}
       {showCreateAdminModal && <CreateAdminModal onClose={() => setShowCreateAdminModal(false)} onCreate={handleCreateAdmin} />}
+      
+      {editingUser && (
+        <EditCourierModal
+          user={editingUser}
+          onClose={() => setEditingUser(null)}
+          onSave={async (userId, data) => {
+            return await updateCourierUser(userId, data);
+          }}
+          onSuccess={(updatedUser) => {
+            const passwordChanged = Boolean(updatedUser.password && updatedUser.password !== editingUser.password);
+            setEditingUser(null);
+            loadData();
+            setNotificationModal({
+              isOpen: true,
+              title: 'Compte mis à jour avec succès',
+              message: `Le compte "${updatedUser.name}" a été modifié avec succès.${
+                passwordChanged 
+                  ? ' Le mot de passe ayant été modifié, toute session active avec l\'ancien compte ou mot de passe a été immédiatement déconnectée.' 
+                  : ''
+              }`,
+              type: 'success'
+            });
+          }}
+        />
+      )}
       
       {breakdownModal.isOpen && (
         <AdminBreakdownModal 

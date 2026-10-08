@@ -5,9 +5,10 @@ import { changePassword } from '../lib/auth';
 interface ChangePasswordModalProps {
   userId: string;
   onClose: () => void;
+  onPasswordChanged?: (newPassword: string) => void;
 }
 
-export default function ChangePasswordModal({ userId, onClose }: ChangePasswordModalProps) {
+export default function ChangePasswordModal({ userId, onClose, onPasswordChanged }: ChangePasswordModalProps) {
   const [formData, setFormData] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
   const [showCurrent, setShowCurrent] = useState(false);
   const [showNew, setShowNew] = useState(false);
@@ -27,6 +28,7 @@ export default function ChangePasswordModal({ userId, onClose }: ChangePasswordM
       const ok = await changePassword(userId, formData.currentPassword, formData.newPassword);
       if (ok) {
         setSuccess(true);
+        if (onPasswordChanged) onPasswordChanged(formData.newPassword);
         setTimeout(onClose, 2000);
       } else setError('Mot de passe actuel incorrect');
     } catch { setError('Erreur système'); }

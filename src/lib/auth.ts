@@ -329,6 +329,145 @@ export const deleteUser = async (userId: string): Promise<boolean> => {
   }
 };
 
+export interface UpdateCourierData {
+  name: string;
+  email?: string;
+  city?: string;
+  password?: string;
+}
+
+export const notifyUserSessionTerminated = (userId: string, reason: string = 'PASSWORD_CHANGED') => {
+  try {
+    if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+      const bc = new BroadcastChannel('dbs_ban_auth_channel');
+      bc.postMessage({ type: 'FORCE_LOGOUT', userId, reason, timestamp: Date.now() });
+      bc.close();
+    }
+  } catch {
+    // Ignore
+  }
+};
+
+export const updateCourierUser = async (
+  userId: string,
+  data: UpdateCourierData
+): Promise<{ success: boolean; user?: User; error?: string }> => {
+  try {
+    const currentUser = getCurrentUser();
+    if (!currentUser || currentUser.role !== 'admin') {
+      return { success: false, error: 'Action non autorisée. Seul un administrateur peut modifier un compte.' };
+    }
+
+    // Récupérer l'utilisateur cible
+    const { data: targetUser, error: fetchErr } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (fetchErr || !targetUser) {
+      return { success: false, error: 'Utilisateur introuvable.' };
+    }
+
+    // Vérifier l'unicité de l'email s'il a changé
+    if (data.email && data.email.toLowerCase() !== targetUser.email.toLowerCase()) {
+      const { data: existingEmail } = await supabase
+        .from('users')
+        .select('id')
+        .eq('email', data.email.toLowerCase().trim())
+        .neq('id', userId)
+        .maybeSingle();
+
+      if (existingEmail) {
+        return { success: false, error: 'Cette adresse email est déjà utilisée par un autre compte.' };
+      }
+    }
+
+    const updates: Record<string, any> = {
+      name: data.name.trim()
+    };
+
+    if (data.email) {
+      updates.email = data.email.toLowerCase().trim();
+    }
+    if (data.city !== undefined) {
+      updates.city = data.city;
+    }
+
+    const passwordWasChanged = Boolean(data.password && data.password.trim() !== '');
+    if (passwordWasChanged) {
+      updates.password = data.password!.trim();
+    }
+
+    const { data: updated, error: updateErr } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', userId)
+      .select()
+      .single();
+
+    if (updateErr) {
+      console.error('Erreur Supabase lors de la mise à jour de l\'utilisateur:', updateErr);
+      return { success: false, error: updateErr.message || 'Erreur lors de la mise à jour.' };
+    }
+
+    const updatedMappedUser = mapUser(updated);
+
+    // Si l'utilisateur modifié est l'utilisateur actuellement connecté dans cette session (ex: l'admin lui-même)
+    if (currentUser.id === userId) {
+      localStorage.setItem(LOCAL_STORAGE_KEYS.CURRENT_USER, JSON.stringify(updatedMappedUser));
+    }
+
+    // Si le mot de passe a été changé, diffuser un signal de déconnexion immédiate pour révoquer les sessions
+    if (passwordWasChanged) {
+      notifyUserSessionTerminated(userId, 'PASSWORD_CHANGED');
+    }
+
+    return { success: true, user: updatedMappedUser };
+  } catch (err: any) {
+    console.error('Erreur lors de la mise à jour de l\'utilisateur:', err);
+    return { success: false, error: err?.message || 'Erreur inconnue.' };
+  }
+};
+
+export interface SessionCheckResult {
+  valid: boolean;
+  reason?: 'NOT_FOUND' | 'ARCHIVED' | 'PASSWORD_CHANGED';
+  freshUser?: User;
+}
+
+export const verifyUserSession = async (
+  userId: string,
+  sessionPassword?: string
+): Promise<SessionCheckResult> => {
+  try {
+    const { data: dbUser, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .single();
+
+    if (error || !dbUser) {
+      return { valid: false, reason: 'NOT_FOUND' };
+    }
+
+    if (dbUser.is_archived) {
+      return { valid: false, reason: 'ARCHIVED' };
+    }
+
+    // Si le mot de passe stocké en base est différent de celui de la session active,
+    // l'utilisateur doit être déconnecté immédiatement
+    if (sessionPassword !== undefined && dbUser.password !== sessionPassword) {
+      return { valid: false, reason: 'PASSWORD_CHANGED' };
+    }
+
+    return { valid: true, freshUser: mapUser(dbUser) };
+  } catch {
+    // En cas d'erreur réseau temporaire, on ne déconnecte pas l'utilisateur hors-ligne
+    return { valid: true };
+  }
+};
+
 export const getParcels = async (): Promise<Parcel[]> => {
   try {
     let { data, error } = await supabase
@@ -948,7 +1087,16 @@ export const changePassword = async (userId: string, currentPassword: string, ne
     if (!isValid) return false;
 
     const { error } = await supabase.from('users').update({ password: newPassword }).eq('id', userId);
-    return !error;
+    if (!error) {
+      const currentUser = getCurrentUser();
+      if (currentUser && currentUser.id === userId) {
+        currentUser.password = newPassword;
+        localStorage.setItem(LOCAL_STORAGE_KEYS.CURRENT_USER, JSON.stringify(currentUser));
+      }
+      notifyUserSessionTerminated(userId, 'PASSWORD_CHANGED');
+      return true;
+    }
+    return false;
   } catch (error) {
     console.error('Erreur lors du changement de mot de passe:', error);
     return false;
